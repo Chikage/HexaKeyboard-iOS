@@ -77,13 +77,13 @@
 		37949CF3D5593A36C56B792A /* AppPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPalette.swift; sourceTree = "<group>"; };
 		4E6A76CBA29C2EA698592D7B /* HexKeyboardSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexKeyboardSurface.swift; sourceTree = "<group>"; };
 		4EFC622D61DFDAE4596C4C57 /* KeyboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewModel.swift; sourceTree = "<group>"; };
-		7D74D841BDBFD07117A45766 /* HexaKeyboard.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HexaKeyboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7D74D841BDBFD07117A45766 /* HexaKeyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HexaKeyboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		80533BA65C8AC264929CEA31 /* HexaKeyboardTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HexaKeyboardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		86C95D90830B2AC585AB2BF0 /* PitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchTests.swift; sourceTree = "<group>"; };
 		8F62E215442877B5270E400A /* Pitch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pitch.swift; sourceTree = "<group>"; };
 		A3651F032F3AA7CA664C06C3 /* HexaKeyboardCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = HexaKeyboardCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AC6923FD972122CC10EBFACA /* ReferenceStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceStrip.swift; sourceTree = "<group>"; };
-		ACC21D4B13F7CA857B69A4C5 /* DefaultSoundFont.sf2 */ = {isa = PBXFileReference; path = DefaultSoundFont.sf2; sourceTree = "<group>"; };
+		ACC21D4B13F7CA857B69A4C5 /* DefaultSoundFont.sf2 */ = {isa = PBXFileReference; lastKnownFileType = file; path = DefaultSoundFont.sf2; sourceTree = "<group>"; };
 		B1F6B82543DD58D9B9C33632 /* HexaKeyboardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexaKeyboardApp.swift; sourceTree = "<group>"; };
 		CC8E87CD5F7CA22DA8D69C1B /* HexaKeyboardLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexaKeyboardLayoutTests.swift; sourceTree = "<group>"; };
 		CD5357FCE5BDE094A394D8FF /* StatusGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusGrid.swift; sourceTree = "<group>"; };
@@ -133,7 +133,6 @@
 			children = (
 				69BB1D29DFCF7591BBBA859C /* Audio */,
 			);
-			name = Resources;
 			path = Resources;
 			sourceTree = "<group>";
 		};
@@ -423,6 +422,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B963P7JMRA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Hexa Key";
@@ -607,6 +607,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B963P7JMRA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Hexa Key";

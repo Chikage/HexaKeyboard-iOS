@@ -12,7 +12,6 @@ struct ContentView: View {
                 ControlPanel(model: model)
                 StatusGrid(model: model)
                 keyboard
-                ReferenceStrip()
             }
             .padding(16)
             .frame(maxWidth: 1_620)
