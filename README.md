@@ -2,6 +2,8 @@
 
 基于 Swift 6 和 SwiftUI 的 iOS 六边形密铺微分音键盘。最低系统版本为 iOS 16.0，支持 iPhone 与 iPad，界面固定为横屏。
 
+应用显示名为 `Hexa Key`，bundle identifier 为 `icu.ringona.hexakeyboard`。
+
 默认参数为 `35 × 8` 键、`N = 26`、`gq = 9`、`gr = 4`、72° 边界平行四边形和绕原点 12° 旋转。旋转后会从无限轴坐标网格重新采样，因此始终保留 280 个键；默认新增和略过数量均为 56。
 
 音频使用 `AVAudioEngine` 与 `AVAudioUnitSampler`。每个同时按下的键占用独立 MIDI 通道，并在 Note On 前发送 14 位 pitch bend，确保微分音和弦互不改调。工程按用户确认引用 XenSynth 的 SoundFont，来源与权利信息见 [`SOUNDFONT_NOTICE.md`](SOUNDFONT_NOTICE.md)。

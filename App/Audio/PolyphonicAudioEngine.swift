@@ -21,6 +21,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let channel: UInt8
         let noteNumber: UInt8
         let order: UInt64
+        let startedAt: TimeInterval
     }
 
     private enum AudioEngineError: LocalizedError {
@@ -46,6 +47,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     private static let soundFontName = "DefaultSoundFont"
     private static let centerPitchBend = UInt16(8_192)
     private static let pitchBendRangeCents = 200.0
+    private static let minimumTapDuration: TimeInterval = 0.22
     private static let melodicChannels: [UInt8] = (0..<16)
         .filter { $0 != 9 }
         .map(UInt8.init)
@@ -53,6 +55,8 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     private let audioSession = AVAudioSession.sharedInstance()
     private var engine = AVAudioEngine()
     private var sampler = AVAudioUnitSampler()
+    private var earlyReflectionDelay = AVAudioUnitDelay()
+    private var reverb = AVAudioUnitReverb()
     private var graphIsConfigured = false
     private var sessionIsConfigured = false
     private var channelsAreConfigured = false
@@ -61,6 +65,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
 
     private var activeVoices: [VoiceToken: ActiveVoice] = [:]
     private var channelOwners: [UInt8: VoiceToken] = [:]
+    private var pendingReleaseTasks: [VoiceToken: Task<Void, Never>] = [:]
     private var nextTokenValue: UInt64 = 1
     private var nextVoiceOrder: UInt64 = 1
 
@@ -145,7 +150,8 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
             token: token,
             channel: channel,
             noteNumber: noteNumber,
-            order: nextVoiceOrder
+            order: nextVoiceOrder,
+            startedAt: ProcessInfo.processInfo.systemUptime
         )
         nextVoiceOrder = incrementing(nextVoiceOrder)
         activeVoices[token] = voice
@@ -156,16 +162,29 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
 
     /// Releases exactly the voice represented by `token`.
     func release(_ token: VoiceToken) {
-        guard let voice = activeVoices.removeValue(forKey: token) else {
+        guard let voice = activeVoices[token], pendingReleaseTasks[token] == nil else {
             return
         }
 
-        stop(voice)
-        channelOwners.removeValue(forKey: voice.channel)
-        updateRunningStatus()
+        let elapsed = ProcessInfo.processInfo.systemUptime - voice.startedAt
+        let remaining = Self.minimumTapDuration - elapsed
+        guard remaining > 0 else {
+            finishRelease(token)
+            return
+        }
+
+        let nanoseconds = UInt64((remaining * 1_000_000_000).rounded(.up))
+        pendingReleaseTasks[token] = Task { @MainActor [weak self] in
+            do {
+                try await Task<Never, Never>.sleep(nanoseconds: nanoseconds)
+            } catch {
+                return
+            }
+            self?.finishRelease(token)
+        }
     }
 
-    /// Stops every touch voice and resets all melodic channels to centered bend.
+    /// Stops every touch voice immediately, including delayed short-tap releases.
     func allOff() {
         stopAllVoices()
         updateRunningStatus()
@@ -219,8 +238,19 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let soundFontURL = try bundledSoundFontURL()
         try loadDefaultInstrument(from: soundFontURL)
 
+        earlyReflectionDelay.delayTime = 0.018
+        earlyReflectionDelay.wetDryMix = 4.5
+        earlyReflectionDelay.feedback = 3
+        earlyReflectionDelay.lowPassCutoff = 7_800
+        reverb.loadFactoryPreset(.largeHall)
+        reverb.wetDryMix = 36.7
+
         engine.attach(sampler)
-        engine.connect(sampler, to: engine.mainMixerNode, format: nil)
+        engine.attach(earlyReflectionDelay)
+        engine.attach(reverb)
+        engine.connect(sampler, to: earlyReflectionDelay, format: nil)
+        engine.connect(earlyReflectionDelay, to: reverb, format: nil)
+        engine.connect(reverb, to: engine.mainMixerNode, format: nil)
         graphIsConfigured = true
     }
 
@@ -300,8 +330,17 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
 
         activeVoices.removeValue(forKey: oldest.token)
         channelOwners.removeValue(forKey: oldest.channel)
+        pendingReleaseTasks.removeValue(forKey: oldest.token)?.cancel()
         stop(oldest)
         return oldest.channel
+    }
+
+    private func finishRelease(_ token: VoiceToken) {
+        pendingReleaseTasks.removeValue(forKey: token)
+        guard let voice = activeVoices.removeValue(forKey: token) else { return }
+        stop(voice)
+        channelOwners.removeValue(forKey: voice.channel)
+        updateRunningStatus()
     }
 
     private func stop(_ voice: ActiveVoice) {
@@ -309,6 +348,10 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     }
 
     private func stopAllVoices() {
+        for task in pendingReleaseTasks.values {
+            task.cancel()
+        }
+        pendingReleaseTasks.removeAll(keepingCapacity: true)
         for voice in activeVoices.values {
             stop(voice)
         }
@@ -393,6 +436,8 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
 
         engine = AVAudioEngine()
         sampler = AVAudioUnitSampler()
+        earlyReflectionDelay = AVAudioUnitDelay()
+        reverb = AVAudioUnitReverb()
         graphIsConfigured = false
         sessionIsConfigured = false
         channelsAreConfigured = false

@@ -29,11 +29,6 @@ func color(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> CGColor {
     CGColor(colorSpace: colorSpace, components: [red, green, blue, 1])!
 }
 
-func positiveModulo(_ value: Int, _ modulus: Int) -> Int {
-    let remainder = value % modulus
-    return remainder >= 0 ? remainder : remainder + modulus
-}
-
 func rotated(_ point: CGPoint, degrees: CGFloat) -> CGPoint {
     let angle = degrees * .pi / 180
     return CGPoint(
@@ -42,13 +37,12 @@ func rotated(_ point: CGPoint, degrees: CGFloat) -> CGPoint {
     )
 }
 
-func center(q: Int, r: Int, radius: CGFloat) -> CGPoint {
+func axialPoint(q: Int, r: Int, radius: CGFloat) -> CGPoint {
     let base = CGPoint(
         x: radius * 1.5 * CGFloat(q),
         y: radius * sqrt(3) * (CGFloat(r) + CGFloat(q) / 2)
     )
-    let point = rotated(base, degrees: 12)
-    return CGPoint(x: point.x + 512, y: point.y + 512)
+    return rotated(base, degrees: 12)
 }
 
 func hexagon(center: CGPoint, radius: CGFloat) -> CGPath {
@@ -68,43 +62,67 @@ func hexagon(center: CGPoint, radius: CGFloat) -> CGPath {
 context.setFillColor(color(0.055, 0.075, 0.073))
 context.fill(CGRect(x: 0, y: 0, width: pixelSize, height: pixelSize))
 
-let keyRadius: CGFloat = 82
-for q in -5...5 {
-    for r in -5...5 {
-        let keyCenter = center(q: q, r: r, radius: keyRadius)
-        guard keyCenter.x > -keyRadius,
-              keyCenter.x < CGFloat(pixelSize) + keyRadius,
-              keyCenter.y > -keyRadius,
-              keyCenter.y < CGFloat(pixelSize) + keyRadius
-        else { continue }
-
-        let pitchClass = positiveModulo(q * 9 + r * 4, 26)
-        let fill = NSColor(
-            calibratedHue: CGFloat(pitchClass) / 26,
-            saturation: 0.64,
-            brightness: 0.62,
-            alpha: 1
-        ).usingColorSpace(.deviceRGB)!.cgColor
-        let path = hexagon(center: keyCenter, radius: keyRadius - 3)
-
-        context.addPath(path)
-        context.setFillColor(fill)
-        context.fillPath()
-        context.addPath(path)
-        context.setStrokeColor(color(0.055, 0.075, 0.073))
-        context.setLineWidth(10)
-        context.strokePath()
+let cluster = [
+    (q: 1, r: 0),
+    (q: 1, r: -1),
+    (q: 0, r: -1),
+    (q: -1, r: 0),
+    (q: -1, r: 1),
+    (q: 0, r: 1),
+]
+let rawCenters = cluster.map { axialPoint(q: $0.q, r: $0.r, radius: 1) }
+let rawVertices = rawCenters.flatMap { center -> [CGPoint] in
+    (0..<6).map { index in
+        let angle = (CGFloat(index) * 60 + 12) * .pi / 180
+        return CGPoint(x: center.x + cos(angle), y: center.y + sin(angle))
     }
 }
+let rawMinX = rawVertices.map(\.x).min()!
+let rawMaxX = rawVertices.map(\.x).max()!
+let rawMinY = rawVertices.map(\.y).min()!
+let rawMaxY = rawVertices.map(\.y).max()!
+// The dark 14 px divider is visually part of the background. A 110 px path
+// inset plus its 7 px inner half leaves 117 px (11.4%) of visible edge space.
+let targetInset: CGFloat = 110
+let targetExtent = CGFloat(pixelSize) - targetInset * 2
+let scale = min(
+    targetExtent / (rawMaxX - rawMinX),
+    targetExtent / (rawMaxY - rawMinY)
+)
 
-let originPath = hexagon(center: CGPoint(x: 512, y: 512), radius: keyRadius - 3)
+let ringColors: [CGColor] = [
+    color(0.28, 0.65, 0.73),
+    color(0.34, 0.45, 0.73),
+    color(0.58, 0.31, 0.64),
+    color(0.68, 0.30, 0.43),
+    color(0.64, 0.54, 0.24),
+    color(0.25, 0.58, 0.38),
+]
+
+for (index, coordinate) in cluster.enumerated() {
+    let rawCenter = axialPoint(q: coordinate.q, r: coordinate.r, radius: 1)
+    let keyCenter = CGPoint(
+        x: 512 + rawCenter.x * scale,
+        y: 512 + rawCenter.y * scale
+    )
+    let path = hexagon(center: keyCenter, radius: scale)
+    context.addPath(path)
+    context.setFillColor(ringColors[index])
+    context.fillPath()
+    context.addPath(path)
+    context.setStrokeColor(color(0.055, 0.075, 0.073))
+    context.setLineWidth(14)
+    context.strokePath()
+}
+
+let originPath = hexagon(center: CGPoint(x: 512, y: 512), radius: scale)
+context.addPath(originPath)
+context.setFillColor(color(0.15, 0.47, 0.48))
+context.fillPath()
 context.addPath(originPath)
 context.setStrokeColor(color(1.0, 0.61, 0.27))
-context.setLineWidth(16)
+context.setLineWidth(18)
 context.strokePath()
-
-context.setFillColor(color(0.25, 0.78, 0.80))
-context.fillEllipse(in: CGRect(x: 500, y: 500, width: 24, height: 24))
 
 guard let image = context.makeImage() else {
     fatalError("Unable to create icon image")

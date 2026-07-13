@@ -8,12 +8,11 @@ struct KeyboardCanvasGeometry: Equatable {
 
     init(layout: HexaKeyboardLayout) {
         let radius = CGFloat(layout.configuration.radius)
-        let outlineBounds = layout.windowOutline.bounds
         let keyBounds = layout.keyBounds
-        let minX = CGFloat(min(outlineBounds.minX, keyBounds.minX))
-        let maxX = CGFloat(max(outlineBounds.maxX, keyBounds.maxX))
-        let minY = CGFloat(min(outlineBounds.minY, keyBounds.minY))
-        let maxY = CGFloat(max(outlineBounds.maxY, keyBounds.maxY))
+        let minX = CGFloat(keyBounds.minX)
+        let maxX = CGFloat(keyBounds.maxX)
+        let minY = CGFloat(keyBounds.minY)
+        let maxY = CGFloat(keyBounds.maxY)
         let padding = radius + 18
 
         offset = CGPoint(x: padding - minX, y: padding - minY)
@@ -188,7 +187,6 @@ final class HexKeyboardCanvasView: UIControl {
         context.setFillColor(AppPalette.uiBackground.cgColor)
         context.fill(bounds)
 
-        drawWindowOutline(in: context)
         drawOrigin(in: context)
         drawKeys(in: context)
         drawPeriodVectors(in: context)
@@ -260,23 +258,6 @@ final class HexKeyboardCanvasView: UIControl {
             )
             return path.contains(point)
         }
-    }
-
-    private func drawWindowOutline(in context: CGContext) {
-        let points = keyboardLayout.windowOutline.points.map(canvasPoint)
-        guard let first = points.first else { return }
-        context.saveGState()
-        context.beginPath()
-        context.move(to: first)
-        for point in points.dropFirst() {
-            context.addLine(to: point)
-        }
-        context.closePath()
-        context.setStrokeColor(AppPalette.uiOutline.cgColor)
-        context.setLineWidth(1.4)
-        context.setLineDash(phase: 0, lengths: [8, 7])
-        context.strokePath()
-        context.restoreGState()
     }
 
     private func drawOrigin(in context: CGContext) {
