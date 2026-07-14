@@ -156,7 +156,7 @@ final class MidiWaterfallParserTests: XCTestCase {
         XCTAssertEqual(note.cents, 16, accuracy: 0.000_001)
     }
 
-    func testAppliesTheCurrentChannelPitchBendAtNoteOn() throws {
+    func testIgnoresStandardMIDIPitchBendLikeXenSynth() throws {
         let parsed = try MidiWaterfallParser.detectAndParse(
             bytes: smfTrack([
                 0x00, 0xE1, 0x7F, 0x7F,
@@ -174,7 +174,7 @@ final class MidiWaterfallParserTests: XCTestCase {
 
         XCTAssertEqual(
             Dictionary(uniqueKeysWithValues: parsed.notes.map { ($0.channel, $0.audioPitch) }),
-            [0: 60, 1: 62, 2: 58]
+            [0: 60, 1: 60, 2: 60]
         )
         XCTAssertEqual(
             Dictionary(
@@ -182,11 +182,11 @@ final class MidiWaterfallParserTests: XCTestCase {
                     .filter { $0.velocity > 0 }
                     .map { ($0.channel, $0.cents) }
             ),
-            [0: 0, 1: 200, 2: -200]
+            [0: 0, 1: 0, 2: 0]
         )
     }
 
-    func testMIDXInlineCentsOverrideTheChannelPitchBend() throws {
+    func testMIDXInlineCentsRemainIndependentOfChannelPitchBend() throws {
         let parsed = try MidiWaterfallParser.detectAndParse(
             bytes: smfTrack([
                 0x00, 0xB2, 0x65, 0x00,

@@ -8,6 +8,25 @@ private struct ScheduledMIDICommand: @unchecked Sendable {
     let perform: () -> Void
 }
 
+/// Serializes the blocking AVAudioSession activation calls away from the main
+/// thread. iOS does not expose the asynchronous activation API available on
+/// watchOS, so callers synchronously wait for work performed on this queue.
+private final class AudioSessionActivationExecutor: @unchecked Sendable {
+    private let queue = DispatchQueue(
+        label: "icu.ringona.hexakeyboard.audio-session",
+        qos: .userInitiated
+    )
+
+    func setActive(
+        _ active: Bool,
+        options: AVAudioSession.SetActiveOptions = []
+    ) throws {
+        try queue.sync {
+            try AVAudioSession.sharedInstance().setActive(active, options: options)
+        }
+    }
+}
+
 /// Runs future MIDI starts independently of the main actor.
 ///
 /// Every command is serialized on the same high-priority queue. Cancelling a
@@ -220,17 +239,19 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         private static let samplerDefaultMelodicBank = SamplerBank(msb: 0x79, lsb: 0)
         private static let samplerDefaultPercussionBank = SamplerBank(msb: 0x78, lsb: 0)
 
+        let sourceChannel: UInt8
         let program: UInt8
         let midiBank: SamplerBank
         let isPercussion: Bool
 
         init(program: Int, sourceChannel: Int, bankMSB: Int, bankLSB: Int) {
+            self.sourceChannel = UInt8(clamping: sourceChannel)
             self.program = UInt8(clamping: program)
             midiBank = SamplerBank(
                 msb: UInt8(clamping: bankMSB),
                 lsb: UInt8(clamping: bankLSB)
             )
-            isPercussion = sourceChannel == 9 || (bankMSB == 1 && bankLSB == 0)
+            isPercussion = self.sourceChannel == 9 || (bankMSB == 1 && bankLSB == 0)
         }
 
         var loadBanks: [SamplerBank] {
@@ -248,6 +269,136 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
                 Self.samplerDefaultMelodicBank,
             ].uniqued()
         }
+
+        var renderProfile: RenderProfile {
+            if isPercussion || program >= 112 {
+                return .percussive
+            }
+
+            switch program {
+            case 0...7:
+                return .piano
+            case 16...23, 40...47, 48...55, 56...63, 64...79, 88...95:
+                return .sustained
+            case 80...87:
+                return .lead
+            default:
+                return .general
+            }
+        }
+    }
+
+    private enum RenderProfile: Hashable {
+        case piano
+        case general
+        case sustained
+        case lead
+        case percussive
+
+        var reverbPreset: AVAudioUnitReverbPreset {
+            switch self {
+            case .piano:
+                return .largeHall
+            case .sustained:
+                return .largeHall2
+            case .lead, .general:
+                return .mediumHall
+            case .percussive:
+                return .mediumRoom
+            }
+        }
+
+        var reverbWetDryMix: Float {
+            switch self {
+            case .sustained:
+                return 42
+            case .piano:
+                return 36.7
+            case .general:
+                return 30
+            case .lead:
+                return 26
+            case .percussive:
+                return 18
+            }
+        }
+
+        var earlyReflectionDelay: TimeInterval {
+            switch self {
+            case .sustained:
+                return 0.024
+            case .piano:
+                return 0.018
+            case .lead:
+                return 0.014
+            case .percussive:
+                return 0.010
+            case .general:
+                return 0.012
+            }
+        }
+
+        var earlyReflectionWetDryMix: Float {
+            switch self {
+            case .sustained:
+                return 5.5
+            case .piano:
+                return 4.5
+            case .lead:
+                return 3.5
+            case .percussive:
+                return 2.5
+            case .general:
+                return 3
+            }
+        }
+
+        var earlyReflectionFeedback: Float {
+            switch self {
+            case .sustained:
+                return 4
+            case .piano:
+                return 3
+            case .general:
+                return 2
+            case .lead, .percussive:
+                return 1
+            }
+        }
+
+        var earlyReflectionLowPassCutoff: Float {
+            switch self {
+            case .percussive:
+                return 9_200
+            case .lead:
+                return 8_400
+            case .sustained:
+                return 7_200
+            case .piano:
+                return 7_800
+            case .general:
+                return 8_000
+            }
+        }
+
+        var volumeTrim: Float {
+            switch self {
+            case .lead:
+                return 0.9
+            case .sustained:
+                return 0.92
+            case .percussive:
+                return 0.95
+            case .piano, .general:
+                return 1
+            }
+        }
+    }
+
+    private struct AudioEffectChain {
+        let inputMixer: AVAudioMixerNode
+        let earlyReflectionDelay: AVAudioUnitDelay
+        let reverb: AVAudioUnitReverb
     }
 
     private struct VoiceAddress: Hashable {
@@ -263,11 +414,9 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let velocity: UInt8
         let order: UInt64
         let allowsChannelSharing: Bool
-        let releaseDelay: TimeInterval
         let scheduledStartUptimeNanoseconds: UInt64
         var startedAt: TimeInterval?
         var expression: UInt8
-        var releaseGeneration: UInt64?
     }
 
     private enum AudioEngineError: LocalizedError {
@@ -294,13 +443,13 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     private static let centerPitchBend = UInt16(8_192)
     private static let pitchBendRangeCents = 200.0
     private static let playbackChannels = (0..<16).map(UInt8.init)
+    private static let defaultReverbMixIntensity: Float = 0.54
 
     private let audioSession = AVAudioSession.sharedInstance()
+    private let audioSessionActivationExecutor = AudioSessionActivationExecutor()
     private var engine = AVAudioEngine()
     private var samplers: [InstrumentKey: AVAudioUnitSampler] = [:]
-    private var samplerMixer = AVAudioMixerNode()
-    private var earlyReflectionDelay = AVAudioUnitDelay()
-    private var reverb = AVAudioUnitReverb()
+    private var effectChains: [RenderProfile: AudioEffectChain] = [:]
     private var graphIsConfigured = false
     private var sessionIsConfigured = false
     private var wantsAudioActive = false
@@ -311,7 +460,6 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     private let scheduledMIDIExecutor = ScheduledMIDIExecutor()
     private var nextTokenValue: UInt64 = 1
     private var nextVoiceOrder: UInt64 = 1
-    private var nextReleaseGeneration: UInt64 = 1
 
     override init() {
         super.init()
@@ -347,18 +495,15 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         NotificationCenter.default.removeObserver(self)
     }
 
-    /// Prepares the session, graph, and bundled SoundFont before the first touch.
+    /// Prepares the session and bundled SoundFont before the first touch.
+    /// The engine starts only after at least one sampler has joined the graph.
     func prepare() throws {
         wantsAudioActive = true
 
         do {
             try configureAudioSessionIfNeeded()
             try configureGraphIfNeeded()
-
-            if !engine.isRunning {
-                engine.prepare()
-                try engine.start()
-            }
+            try startEngineIfNeeded()
 
             isReady = true
             updateRunningStatus()
@@ -464,16 +609,9 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
             velocity: safeVelocity,
             order: nextVoiceOrder,
             allowsChannelSharing: allowsChannelSharing,
-            releaseDelay: Self.releaseDelay(
-                sourceChannel: safeSourceChannel,
-                bankMSB: Int(requestedBankMSB),
-                bankLSB: Int(requestedBankLSB),
-                program: Int(safeProgram)
-            ),
             scheduledStartUptimeNanoseconds: Self.uptimeDeadline(after: safeDelay),
             startedAt: nil,
-            expression: 127,
-            releaseGeneration: nil
+            expression: 127
         )
         nextVoiceOrder = incrementing(nextVoiceOrder)
         activeVoices[token] = voice
@@ -515,45 +653,11 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
 
     /// Releases exactly the voice represented by `token`.
     func release(_ token: VoiceToken) {
-        release(token, immediate: false)
+        finishRelease(token)
     }
 
-    func release(_ token: VoiceToken, immediate: Bool) {
-        guard var voice = activeVoices[token], voice.releaseGeneration == nil else {
-            return
-        }
-
-        if voice.startedAt == nil,
-           DispatchTime.now().uptimeNanoseconds < voice.scheduledStartUptimeNanoseconds {
-            stop(voice)
-            activeVoices.removeValue(forKey: token)
-            removeOwner(voice)
-            updateRunningStatus()
-            return
-        }
-
-        if immediate {
-            finishRelease(token)
-            return
-        }
-
-        guard voice.releaseDelay > 0 else {
-            finishRelease(token)
-            return
-        }
-
-        let releaseGeneration = makeReleaseGeneration()
-        voice.releaseGeneration = releaseGeneration
-        activeVoices[token] = voice
-        scheduledMIDIExecutor.scheduleStop(
-            token: token.rawValue,
-            after: voice.releaseDelay,
-            stop: stopCommand(for: voice),
-            completion: scheduledReleaseCompletion(
-                token: token,
-                releaseGeneration: releaseGeneration
-            )
-        )
+    func release(_ token: VoiceToken, immediate _: Bool) {
+        finishRelease(token)
     }
 
     func setPressure(_ token: VoiceToken, expression: Int) {
@@ -600,7 +704,10 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         engine.pause()
 
         do {
-            try audioSession.setActive(false, options: [.notifyOthersOnDeactivation])
+            try audioSessionActivationExecutor.setActive(
+                false,
+                options: [.notifyOthersOnDeactivation]
+            )
         } catch {
             publishFailure(error)
             return
@@ -617,9 +724,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         }
 
         try audioSession.setCategory(.playback, mode: .default, options: [])
-        try audioSession.setPreferredSampleRate(48_000)
-        try audioSession.setPreferredIOBufferDuration(0.0058)
-        try audioSession.setActive(true)
+        try audioSessionActivationExecutor.setActive(true)
         sessionIsConfigured = true
     }
 
@@ -629,20 +734,42 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         }
 
         _ = try bundledSoundFontURL()
-        earlyReflectionDelay.delayTime = 0.018
-        earlyReflectionDelay.wetDryMix = 4.5
-        earlyReflectionDelay.feedback = 3
-        earlyReflectionDelay.lowPassCutoff = 7_800
-        reverb.loadFactoryPreset(.largeHall)
-        reverb.wetDryMix = 36.7
+        graphIsConfigured = true
+    }
 
-        engine.attach(samplerMixer)
+    private func effectChain(for profile: RenderProfile) -> AudioEffectChain {
+        if let chain = effectChains[profile] {
+            return chain
+        }
+
+        let inputMixer = AVAudioMixerNode()
+        let earlyReflectionDelay = AVAudioUnitDelay()
+        let reverb = AVAudioUnitReverb()
+
+        earlyReflectionDelay.delayTime = profile.earlyReflectionDelay
+        earlyReflectionDelay.wetDryMix = profile.earlyReflectionWetDryMix
+        earlyReflectionDelay.feedback = profile.earlyReflectionFeedback
+        earlyReflectionDelay.lowPassCutoff = profile.earlyReflectionLowPassCutoff
+        reverb.loadFactoryPreset(profile.reverbPreset)
+        reverb.wetDryMix = min(
+            max(profile.reverbWetDryMix * Self.defaultReverbMixIntensity, 0),
+            100
+        )
+
+        engine.attach(inputMixer)
         engine.attach(earlyReflectionDelay)
         engine.attach(reverb)
-        engine.connect(samplerMixer, to: earlyReflectionDelay, format: nil)
+        engine.connect(inputMixer, to: earlyReflectionDelay, format: nil)
         engine.connect(earlyReflectionDelay, to: reverb, format: nil)
         engine.connect(reverb, to: engine.mainMixerNode, format: nil)
-        graphIsConfigured = true
+
+        let chain = AudioEffectChain(
+            inputMixer: inputMixer,
+            earlyReflectionDelay: earlyReflectionDelay,
+            reverb: reverb
+        )
+        effectChains[profile] = chain
+        return chain
     }
 
     private func bundledSoundFontURL() throws -> URL {
@@ -669,7 +796,10 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
 
     private func prepareSamplers(for instruments: Set<InstrumentKey>) throws {
         let missing = instruments.filter { samplers[$0] == nil }
-        guard !missing.isEmpty else { return }
+        guard !missing.isEmpty else {
+            try startEngineIfNeeded()
+            return
+        }
 
         let soundFontURL = try bundledSoundFontURL()
         let wasRunning = engine.isRunning
@@ -681,30 +811,36 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
             for instrument in missing {
                 let sampler = AVAudioUnitSampler()
                 try loadInstrument(instrument, into: sampler, from: soundFontURL)
-                sampler.volume = 1.0
+                let chain = effectChain(for: instrument.renderProfile)
+                sampler.volume = instrument.renderProfile.volumeTrim
                 engine.attach(sampler)
                 engine.connect(
                     sampler,
-                    to: samplerMixer,
+                    to: chain.inputMixer,
                     fromBus: 0,
-                    toBus: samplerMixer.nextAvailableInputBus,
+                    toBus: chain.inputMixer.nextAvailableInputBus,
                     format: nil
                 )
                 configurePlaybackChannels(of: sampler)
                 samplers[instrument] = sampler
             }
 
-            if wasRunning {
-                engine.prepare()
-                try engine.start()
-            }
+            try startEngineIfNeeded()
         } catch {
             if wasRunning, !engine.isRunning {
-                engine.prepare()
-                try? engine.start()
+                try? startEngineIfNeeded()
             }
             throw error
         }
+    }
+
+    private func startEngineIfNeeded() throws {
+        guard !samplers.isEmpty, !engine.isRunning else {
+            return
+        }
+
+        engine.prepare()
+        try engine.start()
     }
 
     private func loadInstrument(
@@ -754,7 +890,9 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         pitchBend: UInt16,
         allowsChannelSharing: Bool
     ) throws -> VoiceAddress {
-        let addresses = Self.playbackChannels.map {
+        let orderedChannels = [instrument.sourceChannel]
+            + Self.playbackChannels.filter { $0 != instrument.sourceChannel }
+        let addresses = orderedChannels.map {
             VoiceAddress(instrument: instrument, channel: $0)
         }
 
@@ -832,33 +970,6 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         }
     }
 
-    private func scheduledReleaseCompletion(
-        token: VoiceToken,
-        releaseGeneration: UInt64
-    ) -> ScheduledMIDICommand {
-        ScheduledMIDICommand { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.completeScheduledRelease(
-                    token,
-                    releaseGeneration: releaseGeneration
-                )
-            }
-        }
-    }
-
-    private func completeScheduledRelease(
-        _ token: VoiceToken,
-        releaseGeneration: UInt64
-    ) {
-        guard let voice = activeVoices[token],
-              voice.releaseGeneration == releaseGeneration else {
-            return
-        }
-        activeVoices.removeValue(forKey: token)
-        removeOwner(voice)
-        updateRunningStatus()
-    }
-
     private func stop(_ voice: ActiveVoice) {
         scheduledMIDIExecutor.cancelAndStop(
             token: voice.token.rawValue,
@@ -887,12 +998,6 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let token = VoiceToken(rawValue: nextTokenValue)
         nextTokenValue = incrementing(nextTokenValue)
         return token
-    }
-
-    private func makeReleaseGeneration() -> UInt64 {
-        let generation = nextReleaseGeneration
-        nextReleaseGeneration = incrementing(nextReleaseGeneration)
-        return generation
     }
 
     private func incrementing(_ value: UInt64) -> UInt64 {
@@ -965,9 +1070,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
 
         engine = AVAudioEngine()
         samplers.removeAll(keepingCapacity: true)
-        samplerMixer = AVAudioMixerNode()
-        earlyReflectionDelay = AVAudioUnitDelay()
-        reverb = AVAudioUnitReverb()
+        effectChains.removeAll(keepingCapacity: true)
         graphIsConfigured = false
         sessionIsConfigured = false
         isReady = false
@@ -1029,25 +1132,4 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         return overflowed ? UInt64.max : sum
     }
 
-    private static func releaseDelay(
-        sourceChannel: Int,
-        bankMSB: Int,
-        bankLSB: Int,
-        program: Int
-    ) -> TimeInterval {
-        let bank = bankMSB * 128 + bankLSB
-        if sourceChannel == 9 || bank == 128 || program >= 112 {
-            return 0
-        }
-        if (0...7).contains(program) {
-            return 0.68
-        }
-        if (16...23).contains(program)
-            || (40...79).contains(program)
-            || (88...95).contains(program)
-            || (80...87).contains(program) {
-            return 0
-        }
-        return 0.035
-    }
 }

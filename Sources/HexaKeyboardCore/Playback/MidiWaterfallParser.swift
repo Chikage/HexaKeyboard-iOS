@@ -184,18 +184,9 @@ public enum MidiWaterfallParser {
     private static let offsetCentRange = 64.0
     private static let offsetMagnitudeSteps = 32_768.0
     private static let defaultTempoUsPerQuarter = 500_000.0
-    private static let defaultPitchBendRangeSemitones = 2
-    private static let pitchBendCenter = 8_192
-    private static let pitchBendMaximum = 16_383
     private static let midiControlBankMSB = 0
-    private static let midiControlDataEntryMSB = 6
     private static let midiControlBankLSB = 32
-    private static let midiControlDataEntryLSB = 38
     private static let midiControlSustain = 64
-    private static let midiControlNRPNLSB = 98
-    private static let midiControlNRPNMSB = 99
-    private static let midiControlRPNLSB = 100
-    private static let midiControlRPNMSB = 101
     private static let noteRenderLookbackSeconds = 8.0
 
     public static func detectAndParse(
@@ -369,14 +360,6 @@ public enum MidiWaterfallParser {
             var bankMSB: [Int: Int] = [:]
             var bankLSB: [Int: Int] = [:]
             var inlineOffsets: [InlineOffset] = []
-            var pitchBendValues = Array(repeating: pitchBendCenter, count: 16)
-            var pitchBendRangeSemitones = Array(
-                repeating: defaultPitchBendRangeSemitones,
-                count: 16
-            )
-            var pitchBendRangeCents = Array(repeating: 0, count: 16)
-            var selectedRPNMSB = Array(repeating: 127, count: 16)
-            var selectedRPNLSB = Array(repeating: 127, count: 16)
             var sustainDown = Array(repeating: false, count: 16)
             var sustainedNoteOffs = Array(repeating: [PlaybackNoteEvent](), count: 16)
 
@@ -479,21 +462,6 @@ public enum MidiWaterfallParser {
                         bankMSB[channel] = data2
                     case midiControlBankLSB:
                         bankLSB[channel] = data2
-                    case midiControlRPNMSB:
-                        selectedRPNMSB[channel] = data2
-                    case midiControlRPNLSB:
-                        selectedRPNLSB[channel] = data2
-                    case midiControlNRPNMSB, midiControlNRPNLSB:
-                        selectedRPNMSB[channel] = 127
-                        selectedRPNLSB[channel] = 127
-                    case midiControlDataEntryMSB:
-                        if selectedRPNMSB[channel] == 0, selectedRPNLSB[channel] == 0 {
-                            pitchBendRangeSemitones[channel] = data2
-                        }
-                    case midiControlDataEntryLSB:
-                        if selectedRPNMSB[channel] == 0, selectedRPNLSB[channel] == 0 {
-                            pitchBendRangeCents[channel] = data2
-                        }
                     case midiControlSustain:
                         let wasDown = sustainDown[channel]
                         sustainDown[channel] = data2 >= 64
@@ -504,18 +472,11 @@ public enum MidiWaterfallParser {
                         break
                     }
                 }
-                if eventType == 0xE0 {
-                    pitchBendValues[channel] = min(
-                        pitchBendMaximum,
-                        max(0, data2 << 7 | data1)
-                    )
-                }
                 if eventType == 0x80 || eventType == 0x90 {
                     let velocity = eventType == 0x90 ? data2 : 0
                     var effectivePitch = data1
                     var noteCents = 0.0
                     if velocity > 0 {
-                        var hasInlineOffset = false
                         if let last = inlineOffsets.last, last.tick != tick {
                             inlineOffsets.removeAll(keepingCapacity: true)
                         }
@@ -526,14 +487,6 @@ public enum MidiWaterfallParser {
                         ) {
                             effectivePitch = inline.pitch
                             noteCents = inline.cents
-                            hasInlineOffset = true
-                        }
-                        if !hasInlineOffset {
-                            noteCents += pitchBendCents(
-                                value: pitchBendValues[channel],
-                                rangeSemitones: Double(pitchBendRangeSemitones[channel])
-                                    + Double(pitchBendRangeCents[channel]) / 100.0
-                            )
                         }
                     } else {
                         inlineOffsets.removeAll(keepingCapacity: true)
@@ -922,19 +875,6 @@ public enum MidiWaterfallParser {
         let sign = raw & 0x8000 != 0 ? -1.0 : 1.0
         let magnitude = raw & 0x7FFF
         return sign * (Double(magnitude) / offsetMagnitudeSteps * offsetCentRange)
-    }
-
-    private static func pitchBendCents(value: Int, rangeSemitones: Double) -> Double {
-        let delta = min(pitchBendMaximum, max(0, value)) - pitchBendCenter
-        let normalized: Double
-        if delta > 0 {
-            normalized = Double(delta) / Double(pitchBendMaximum - pitchBendCenter)
-        } else if delta < 0 {
-            normalized = Double(delta) / Double(pitchBendCenter)
-        } else {
-            normalized = 0
-        }
-        return normalized * max(0, rangeSemitones) * 100.0
     }
 
     private static func skipSystemEvent(reader: ByteReader, status: Int) throws {
