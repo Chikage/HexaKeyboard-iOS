@@ -13,7 +13,7 @@ public struct HexaKeyboardConfiguration: Equatable, Sendable {
     public init(
         columns: Int = 35,
         rows: Int = 8,
-        period: Int = 26,
+        period: Int = 53,
         stepQ: Int = 9,
         stepR: Int = 4,
         radius: Int = 24,
@@ -40,7 +40,7 @@ public struct HexaKeyboardConfiguration: Equatable, Sendable {
             period: period.clamped(to: 2...200),
             stepQ: stepQ.clamped(to: -200...200),
             stepR: stepR.clamped(to: -200...200),
-            radius: radius.clamped(to: 14...34),
+            radius: 24,
             rotationDegrees: rotationDegrees.clamped(to: -60...60),
             frameAcuteAngleDegrees: frameAcuteAngleDegrees
         )

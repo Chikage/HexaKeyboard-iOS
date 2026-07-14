@@ -2,22 +2,53 @@ import SwiftUI
 import UIKit
 
 enum AppPalette {
-    static let background = Color(red: 0.055, green: 0.075, blue: 0.073)
-    static let surface = Color(red: 0.086, green: 0.112, blue: 0.108)
-    static let raisedSurface = Color(red: 0.105, green: 0.132, blue: 0.128)
-    static let line = Color(red: 0.22, green: 0.29, blue: 0.28)
-    static let primaryText = Color(red: 0.93, green: 0.96, blue: 0.95)
-    static let secondaryText = Color(red: 0.61, green: 0.68, blue: 0.66)
-    static let accent = Color(red: 0.25, green: 0.78, blue: 0.80)
-    static let selection = Color(red: 1.00, green: 0.61, blue: 0.27)
+    static let background = Color(hex: 0x0E1313)
+    static let surface = Color(hex: 0x161D1C)
+    static let raisedSurface = Color(hex: 0x1B2221)
+    static let line = Color(hex: 0x384A47)
+    static let primaryText = Color(hex: 0xEDF5F2)
+    static let secondaryText = Color(hex: 0x9BAEAA)
+    static let accent = Color(hex: 0x40C7CC)
+    static let selection = Color(hex: 0xFF9C45)
+    static let outline = Color(hex: 0xAEABFF)
 
-    static let uiBackground = UIColor(red: 0.055, green: 0.075, blue: 0.073, alpha: 1)
-    static let uiLine = UIColor(red: 0.20, green: 0.27, blue: 0.26, alpha: 1)
-    static let uiPrimaryText = UIColor(red: 0.94, green: 0.97, blue: 0.96, alpha: 1)
-    static let uiSecondaryText = UIColor(red: 0.66, green: 0.72, blue: 0.70, alpha: 1)
-    static let uiAccent = UIColor(red: 0.25, green: 0.78, blue: 0.80, alpha: 1)
-    static let uiSelection = UIColor(red: 1.00, green: 0.61, blue: 0.27, alpha: 1)
-    static let uiOutline = UIColor(red: 0.68, green: 0.67, blue: 1.00, alpha: 0.90)
+    static let playbackButton = Color(hex: 0x262B34).opacity(0.42)
+    static let playbackPanel = Color(hex: 0x20252D).opacity(0.32)
+    static let playbackActive = Color(hex: 0x1B6672).opacity(0.74)
+    static let playbackDivider = Color(hex: 0x58606E).opacity(0.34)
+    static let playbackMuted = Color(hex: 0xA6B0BE)
+
+    static let uiBackground = UIColor(hex: 0x0E1313)
+    static let uiSurface = UIColor(hex: 0x161D1C)
+    static let uiRaisedSurface = UIColor(hex: 0x1B2221)
+    static let uiLine = UIColor(hex: 0x384A47)
+    static let uiPrimaryText = UIColor(hex: 0xEDF5F2)
+    static let uiSecondaryText = UIColor(hex: 0x9BAEAA)
+    static let uiAccent = UIColor(hex: 0x40C7CC)
+    static let uiSelection = UIColor(hex: 0xFF9C45)
+    static let uiOutline = UIColor(hex: 0xAEABFF)
+}
+
+private extension Color {
+    init(hex: UInt32, alpha: Double = 1) {
+        self.init(
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
+            opacity: alpha
+        )
+    }
+}
+
+private extension UIColor {
+    convenience init(hex: UInt32, alpha: CGFloat = 1) {
+        self.init(
+            red: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: alpha
+        )
+    }
 }
 
 extension View {

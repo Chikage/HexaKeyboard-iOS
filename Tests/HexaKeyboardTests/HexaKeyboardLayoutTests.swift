@@ -8,7 +8,7 @@ final class HexaKeyboardLayoutTests: XCTestCase {
 
         XCTAssertEqual(configuration.columns, 35)
         XCTAssertEqual(configuration.rows, 8)
-        XCTAssertEqual(configuration.period, 26)
+        XCTAssertEqual(configuration.period, 53)
         XCTAssertEqual(configuration.stepQ, 9)
         XCTAssertEqual(configuration.stepR, 4)
         XCTAssertEqual(configuration.radius, 24)
@@ -17,6 +17,11 @@ final class HexaKeyboardLayoutTests: XCTestCase {
         XCTAssertEqual(layout.cells.count, 280)
         XCTAssertEqual(Set(layout.cells.map(\.coordinate)).count, 280)
         XCTAssertEqual(layout.stats, RotationStats(generated: 56, omitted: 56))
+    }
+
+    func testRadiusIsAlwaysNormalizedToTwentyFour() {
+        XCTAssertEqual(HexaKeyboardConfiguration(radius: 14).normalized().radius, 24)
+        XCTAssertEqual(HexaKeyboardConfiguration(radius: 34).normalized().radius, 24)
     }
 
     func testOriginUsesOddQCenteredWindowAndAnchorsC4() throws {
@@ -45,13 +50,13 @@ final class HexaKeyboardLayoutTests: XCTestCase {
         XCTAssertEqual(
             vectors,
             [
-                PeriodVector(dq: -2, dr: -2, distance: 4),
-                PeriodVector(dq: -6, dr: 7, distance: 7),
+                PeriodVector(dq: -5, dr: -2, distance: 7),
+                PeriodVector(dq: -4, dr: 9, distance: 9),
             ]
         )
         for vector in vectors {
             XCTAssertEqual(
-                positiveModulo(vector.dq * 9 + vector.dr * 4, modulus: 26),
+                positiveModulo(vector.dq * 9 + vector.dr * 4, modulus: 53),
                 0
             )
         }

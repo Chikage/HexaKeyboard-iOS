@@ -7,26 +7,37 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		13C018856D1793A6021887BA /* MidiWaterfallParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 477D93B2D02F606D577EB317 /* MidiWaterfallParserTests.swift */; };
+		1B99EE98B776F0C5928EB0BF /* MainToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC768EFB8184F239ABC84071 /* MainToolbar.swift */; };
 		1DF48DF2408B8B0ED52571F3 /* HexaKeyboardCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3651F032F3AA7CA664C06C3 /* HexaKeyboardCore.framework */; };
+		222B1E0B97ECF23325E661DB /* KeyboardPlaybackTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2AA9C122D65C5DE450DA1C /* KeyboardPlaybackTimeline.swift */; };
 		3238539FA8D28E45D54C560B /* HexaKeyboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F6B82543DD58D9B9C33632 /* HexaKeyboardApp.swift */; };
 		33402BAB0937BB5D4558FE05 /* HexaKeyboardLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC8E87CD5F7CA22DA8D69C1B /* HexaKeyboardLayoutTests.swift */; };
+		37D9318C37F11F9443AA0A26 /* ScoreContentParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70D1778651F7A32FF8B1A841 /* ScoreContentParserTests.swift */; };
+		3E457924E662996AF3698ECC /* ScorePlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A71FEE20C4B54D2DB64CFC /* ScorePlaybackController.swift */; };
+		43552AD2C8AB9D492B6770A8 /* MuseScoreConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46B7BBA56411D2E28578DADC /* MuseScoreConverter.swift */; };
+		5D96153AFDD0A488ACEB5F4A /* TouchSelectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 567B3488D889A082C9C2FDDC /* TouchSelectionState.swift */; };
+		64D3528AFE19FAA7B2F2CCEC /* KeyboardPlaybackTimelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19318B9AF8F40428E295C73E /* KeyboardPlaybackTimelineTests.swift */; };
 		77A032AE869115C1ABF6F4EC /* HexaKeyboardCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3651F032F3AA7CA664C06C3 /* HexaKeyboardCore.framework */; };
 		82D14FA107D41C99C6303A27 /* HexaKeyboardCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A3651F032F3AA7CA664C06C3 /* HexaKeyboardCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		87D09B0B7CBF51A0CB7F1F75 /* PolyphonicAudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7DEBA58D8D07C3474FD6DD3 /* PolyphonicAudioEngine.swift */; };
-		8A6FFBF8F86A74BBC4011BAD /* StatusGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD5357FCE5BDE094A394D8FF /* StatusGrid.swift */; };
+		8E787F3ACFDD8894D3B8B1EB /* HexTouchDynamicsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450699E1880E7B65ADE5F687 /* HexTouchDynamicsTests.swift */; };
+		8EEDEB5D677E69B5903B833E /* HexTouchDynamics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EE70684669A3BA2828599B7 /* HexTouchDynamics.swift */; };
+		97FC526C0BE5F956BF456AD2 /* MidiWaterfallParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F465144E1D84DD7D1969A834 /* MidiWaterfallParser.swift */; };
 		9CAE2072951D616BE6D355DE /* PitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86C95D90830B2AC585AB2BF0 /* PitchTests.swift */; };
 		A5EAE41B8E1D6B6A5B41896C /* KeyboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EFC622D61DFDAE4596C4C57 /* KeyboardViewModel.swift */; };
 		A6A7EDA9CD4CE9541D488AC9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E4297E4AA52B4186BED693 /* ContentView.swift */; };
-		AA32EB145F01450A68311E44 /* ControlPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1575C2F6A0BAEA35BCDC3F1C /* ControlPanel.swift */; };
 		AD3837464DCFCD724DD3893F /* HexKeyboardSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6A76CBA29C2EA698592D7B /* HexKeyboardSurface.swift */; };
 		B0F9640242FED7E1E5A4D9CE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E97FFBD754072A2BF9A1FBF0 /* Assets.xcassets */; };
+		B57ADBF2EBCD41E40A714555 /* ScoreContentParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B734D2F4615034CDDA9B97 /* ScoreContentParser.swift */; };
 		BF050346F5A7D71AB440E29C /* DefaultSoundFont.sf2 in Resources */ = {isa = PBXBuildFile; fileRef = ACC21D4B13F7CA857B69A4C5 /* DefaultSoundFont.sf2 */; };
-		C284952C52FE3F7A991FB5DC /* ReferenceStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC6923FD972122CC10EBFACA /* ReferenceStrip.swift */; };
 		C891DCAD9B5B3400B0ED941C /* AppPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37949CF3D5593A36C56B792A /* AppPalette.swift */; };
 		D03B8C7C00CEAE949F0D0FF8 /* HexaKeyboardCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A3651F032F3AA7CA664C06C3 /* HexaKeyboardCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D11C0D04B78221A95D4E2093 /* HexGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0435EEBADD4A1007F991427 /* HexGeometry.swift */; };
+		D6CBD7EA70231102C08D3479 /* MuseScoreConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E28C30C7B6B468B8F85E6FB5 /* MuseScoreConverterTests.swift */; };
 		D825E91A76A6964D8B56043B /* HexaKeyboardLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3126ABB043132FEBA89B9887 /* HexaKeyboardLayout.swift */; };
 		D94A60520E0DA6BB84513E73 /* Pitch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F62E215442877B5270E400A /* Pitch.swift */; };
+		FBA2D3AF0DA2390C8ECAFE1F /* TouchSelectionStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 056E414A4E997BA1951BDC3D /* TouchSelectionStateTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,24 +83,35 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		1575C2F6A0BAEA35BCDC3F1C /* ControlPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanel.swift; sourceTree = "<group>"; };
+		056E414A4E997BA1951BDC3D /* TouchSelectionStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchSelectionStateTests.swift; sourceTree = "<group>"; };
+		19318B9AF8F40428E295C73E /* KeyboardPlaybackTimelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardPlaybackTimelineTests.swift; sourceTree = "<group>"; };
 		3126ABB043132FEBA89B9887 /* HexaKeyboardLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexaKeyboardLayout.swift; sourceTree = "<group>"; };
 		37949CF3D5593A36C56B792A /* AppPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPalette.swift; sourceTree = "<group>"; };
+		3A2AA9C122D65C5DE450DA1C /* KeyboardPlaybackTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardPlaybackTimeline.swift; sourceTree = "<group>"; };
+		450699E1880E7B65ADE5F687 /* HexTouchDynamicsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexTouchDynamicsTests.swift; sourceTree = "<group>"; };
+		46B7BBA56411D2E28578DADC /* MuseScoreConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuseScoreConverter.swift; sourceTree = "<group>"; };
+		477D93B2D02F606D577EB317 /* MidiWaterfallParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidiWaterfallParserTests.swift; sourceTree = "<group>"; };
 		4E6A76CBA29C2EA698592D7B /* HexKeyboardSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexKeyboardSurface.swift; sourceTree = "<group>"; };
 		4EFC622D61DFDAE4596C4C57 /* KeyboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewModel.swift; sourceTree = "<group>"; };
-		7D74D841BDBFD07117A45766 /* HexaKeyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HexaKeyboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		567B3488D889A082C9C2FDDC /* TouchSelectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchSelectionState.swift; sourceTree = "<group>"; };
+		6EE70684669A3BA2828599B7 /* HexTouchDynamics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexTouchDynamics.swift; sourceTree = "<group>"; };
+		70D1778651F7A32FF8B1A841 /* ScoreContentParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreContentParserTests.swift; sourceTree = "<group>"; };
+		7D74D841BDBFD07117A45766 /* HexaKeyboard.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HexaKeyboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		80533BA65C8AC264929CEA31 /* HexaKeyboardTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HexaKeyboardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		86C95D90830B2AC585AB2BF0 /* PitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchTests.swift; sourceTree = "<group>"; };
 		8F62E215442877B5270E400A /* Pitch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pitch.swift; sourceTree = "<group>"; };
+		A1B734D2F4615034CDDA9B97 /* ScoreContentParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreContentParser.swift; sourceTree = "<group>"; };
 		A3651F032F3AA7CA664C06C3 /* HexaKeyboardCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = HexaKeyboardCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		AC6923FD972122CC10EBFACA /* ReferenceStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceStrip.swift; sourceTree = "<group>"; };
-		ACC21D4B13F7CA857B69A4C5 /* DefaultSoundFont.sf2 */ = {isa = PBXFileReference; lastKnownFileType = file; path = DefaultSoundFont.sf2; sourceTree = "<group>"; };
+		ACC21D4B13F7CA857B69A4C5 /* DefaultSoundFont.sf2 */ = {isa = PBXFileReference; path = DefaultSoundFont.sf2; sourceTree = "<group>"; };
 		B1F6B82543DD58D9B9C33632 /* HexaKeyboardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexaKeyboardApp.swift; sourceTree = "<group>"; };
 		CC8E87CD5F7CA22DA8D69C1B /* HexaKeyboardLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexaKeyboardLayoutTests.swift; sourceTree = "<group>"; };
-		CD5357FCE5BDE094A394D8FF /* StatusGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusGrid.swift; sourceTree = "<group>"; };
 		D0435EEBADD4A1007F991427 /* HexGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexGeometry.swift; sourceTree = "<group>"; };
+		D0A71FEE20C4B54D2DB64CFC /* ScorePlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScorePlaybackController.swift; sourceTree = "<group>"; };
+		E28C30C7B6B468B8F85E6FB5 /* MuseScoreConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuseScoreConverterTests.swift; sourceTree = "<group>"; };
 		E97FFBD754072A2BF9A1FBF0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		EC768EFB8184F239ABC84071 /* MainToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainToolbar.swift; sourceTree = "<group>"; };
 		F2E4297E4AA52B4186BED693 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		F465144E1D84DD7D1969A834 /* MidiWaterfallParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidiWaterfallParser.swift; sourceTree = "<group>"; };
 		F7DEBA58D8D07C3474FD6DD3 /* PolyphonicAudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolyphonicAudioEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -119,6 +141,7 @@
 				55CF8E3EDCE31E890788CD10 /* Audio */,
 				C712D58AADE3DD82EC125CA6 /* Design */,
 				430FA2D872FBCECCBEB96F9D /* Models */,
+				E632A3A7E0A412DCE1DAA590 /* Playback */,
 				2E6FD8433E51F96D561AA674 /* Resources */,
 				C930E2C04ACEE77C91B241B0 /* Views */,
 				E97FFBD754072A2BF9A1FBF0 /* Assets.xcassets */,
@@ -133,6 +156,7 @@
 			children = (
 				69BB1D29DFCF7591BBBA859C /* Audio */,
 			);
+			name = Resources;
 			path = Resources;
 			sourceTree = "<group>";
 		};
@@ -170,6 +194,17 @@
 			path = Audio;
 			sourceTree = "<group>";
 		};
+		6B7A919A73931C457B055C10 /* Playback */ = {
+			isa = PBXGroup;
+			children = (
+				3A2AA9C122D65C5DE450DA1C /* KeyboardPlaybackTimeline.swift */,
+				F465144E1D84DD7D1969A834 /* MidiWaterfallParser.swift */,
+				46B7BBA56411D2E28578DADC /* MuseScoreConverter.swift */,
+				A1B734D2F4615034CDDA9B97 /* ScoreContentParser.swift */,
+			);
+			path = Playback;
+			sourceTree = "<group>";
+		};
 		BF34192A3B71D68A5775E616 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -199,20 +234,29 @@
 		C930E2C04ACEE77C91B241B0 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				1575C2F6A0BAEA35BCDC3F1C /* ControlPanel.swift */,
 				4E6A76CBA29C2EA698592D7B /* HexKeyboardSurface.swift */,
-				AC6923FD972122CC10EBFACA /* ReferenceStrip.swift */,
-				CD5357FCE5BDE094A394D8FF /* StatusGrid.swift */,
+				EC768EFB8184F239ABC84071 /* MainToolbar.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		E632A3A7E0A412DCE1DAA590 /* Playback */ = {
+			isa = PBXGroup;
+			children = (
+				D0A71FEE20C4B54D2DB64CFC /* ScorePlaybackController.swift */,
+			);
+			path = Playback;
 			sourceTree = "<group>";
 		};
 		EF8185C5C1A94D32C7EDF3E7 /* HexaKeyboardCore */ = {
 			isa = PBXGroup;
 			children = (
+				6B7A919A73931C457B055C10 /* Playback */,
 				3126ABB043132FEBA89B9887 /* HexaKeyboardLayout.swift */,
 				D0435EEBADD4A1007F991427 /* HexGeometry.swift */,
+				6EE70684669A3BA2828599B7 /* HexTouchDynamics.swift */,
 				8F62E215442877B5270E400A /* Pitch.swift */,
+				567B3488D889A082C9C2FDDC /* TouchSelectionState.swift */,
 			);
 			name = HexaKeyboardCore;
 			path = Sources/HexaKeyboardCore;
@@ -222,7 +266,13 @@
 			isa = PBXGroup;
 			children = (
 				CC8E87CD5F7CA22DA8D69C1B /* HexaKeyboardLayoutTests.swift */,
+				450699E1880E7B65ADE5F687 /* HexTouchDynamicsTests.swift */,
+				19318B9AF8F40428E295C73E /* KeyboardPlaybackTimelineTests.swift */,
+				477D93B2D02F606D577EB317 /* MidiWaterfallParserTests.swift */,
+				E28C30C7B6B468B8F85E6FB5 /* MuseScoreConverterTests.swift */,
 				86C95D90830B2AC585AB2BF0 /* PitchTests.swift */,
+				70D1778651F7A32FF8B1A841 /* ScoreContentParserTests.swift */,
+				056E414A4E997BA1951BDC3D /* TouchSelectionStateTests.swift */,
 			);
 			path = HexaKeyboardTests;
 			sourceTree = "<group>";
@@ -301,6 +351,7 @@
 						ProvisioningStyle = Automatic;
 					};
 					DB895040BDC22E27DFF9C83C = {
+						DevelopmentTeam = B963P7JMRA;
 						ProvisioningStyle = Automatic;
 					};
 					DE30399E2DFCA5A406CA90E3 = {
@@ -346,8 +397,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8E787F3ACFDD8894D3B8B1EB /* HexTouchDynamicsTests.swift in Sources */,
 				33402BAB0937BB5D4558FE05 /* HexaKeyboardLayoutTests.swift in Sources */,
+				64D3528AFE19FAA7B2F2CCEC /* KeyboardPlaybackTimelineTests.swift in Sources */,
+				13C018856D1793A6021887BA /* MidiWaterfallParserTests.swift in Sources */,
+				D6CBD7EA70231102C08D3479 /* MuseScoreConverterTests.swift in Sources */,
 				9CAE2072951D616BE6D355DE /* PitchTests.swift in Sources */,
+				37D9318C37F11F9443AA0A26 /* ScoreContentParserTests.swift in Sources */,
+				FBA2D3AF0DA2390C8ECAFE1F /* TouchSelectionStateTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -356,8 +413,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				D11C0D04B78221A95D4E2093 /* HexGeometry.swift in Sources */,
+				8EEDEB5D677E69B5903B833E /* HexTouchDynamics.swift in Sources */,
 				D825E91A76A6964D8B56043B /* HexaKeyboardLayout.swift in Sources */,
+				222B1E0B97ECF23325E661DB /* KeyboardPlaybackTimeline.swift in Sources */,
+				97FC526C0BE5F956BF456AD2 /* MidiWaterfallParser.swift in Sources */,
+				43552AD2C8AB9D492B6770A8 /* MuseScoreConverter.swift in Sources */,
 				D94A60520E0DA6BB84513E73 /* Pitch.swift in Sources */,
+				B57ADBF2EBCD41E40A714555 /* ScoreContentParser.swift in Sources */,
+				5D96153AFDD0A488ACEB5F4A /* TouchSelectionState.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -367,13 +430,12 @@
 			files = (
 				C891DCAD9B5B3400B0ED941C /* AppPalette.swift in Sources */,
 				A6A7EDA9CD4CE9541D488AC9 /* ContentView.swift in Sources */,
-				AA32EB145F01450A68311E44 /* ControlPanel.swift in Sources */,
 				AD3837464DCFCD724DD3893F /* HexKeyboardSurface.swift in Sources */,
 				3238539FA8D28E45D54C560B /* HexaKeyboardApp.swift in Sources */,
 				A5EAE41B8E1D6B6A5B41896C /* KeyboardViewModel.swift in Sources */,
+				1B99EE98B776F0C5928EB0BF /* MainToolbar.swift in Sources */,
 				87D09B0B7CBF51A0CB7F1F75 /* PolyphonicAudioEngine.swift in Sources */,
-				C284952C52FE3F7A991FB5DC /* ReferenceStrip.swift in Sources */,
-				8A6FFBF8F86A74BBC4011BAD /* StatusGrid.swift in Sources */,
+				3E457924E662996AF3698ECC /* ScorePlaybackController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -425,6 +487,7 @@
 				DEVELOPMENT_TEAM = B963P7JMRA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Hexa Key";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -432,9 +495,11 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIViewControllerBasedStatusBarAppearance = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -610,6 +675,7 @@
 				DEVELOPMENT_TEAM = B963P7JMRA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Hexa Key";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -617,9 +683,11 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIViewControllerBasedStatusBarAppearance = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

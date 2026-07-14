@@ -20,8 +20,11 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let token: VoiceToken
         let channel: UInt8
         let noteNumber: UInt8
+        let velocity: UInt8
         let order: UInt64
-        let startedAt: TimeInterval
+        let releaseDelay: TimeInterval
+        var startedAt: TimeInterval?
+        var expression: UInt8
     }
 
     private enum AudioEngineError: LocalizedError {
@@ -47,7 +50,6 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     private static let soundFontName = "DefaultSoundFont"
     private static let centerPitchBend = UInt16(8_192)
     private static let pitchBendRangeCents = 200.0
-    private static let minimumTapDuration: TimeInterval = 0.22
     private static let melodicChannels: [UInt8] = (0..<16)
         .filter { $0 != 9 }
         .map(UInt8.init)
@@ -60,11 +62,13 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     private var graphIsConfigured = false
     private var sessionIsConfigured = false
     private var channelsAreConfigured = false
+    private var defaultBankMSB: UInt8 = 0x79
     private var wantsAudioActive = false
     private var wasRunningBeforeInterruption = false
 
     private var activeVoices: [VoiceToken: ActiveVoice] = [:]
     private var channelOwners: [UInt8: VoiceToken] = [:]
+    private var pendingStartTasks: [VoiceToken: Task<Void, Never>] = [:]
     private var pendingReleaseTasks: [VoiceToken: Task<Void, Never>] = [:]
     private var nextTokenValue: UInt64 = 1
     private var nextVoiceOrder: UInt64 = 1
@@ -123,7 +127,15 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     ///
     /// - Parameter pitch: MIDI pitch in semitones; fractional values are microtonal.
     @discardableResult
-    func start(pitch: Double, velocity: Int = 100) throws -> VoiceToken {
+    func start(
+        pitch: Double,
+        velocity: Int = 100,
+        program: Int = 0,
+        sourceChannel: Int = 0,
+        bankMSB: Int = 0,
+        bankLSB: Int = 0,
+        delaySeconds: TimeInterval = 0
+    ) throws -> VoiceToken {
         let roundedNote = pitch.isFinite ? Int(floor(pitch + 0.5)) : -1
         guard pitch.isFinite, (0...127).contains(roundedNote) else {
             let error = AudioEngineError.invalidPitch
@@ -138,42 +150,109 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let noteNumber = UInt8(roundedNote)
         let cents = (pitch - Double(noteNumber)) * 100.0
         let pitchBend = Self.pitchBendValue(forCents: cents)
+        let safeVelocity = UInt8(clamping: max(1, min(velocity, 127)))
+        let safeProgram = UInt8(clamping: max(0, min(program, 127)))
+        let safeSourceChannel = max(0, min(sourceChannel, 15))
+        let requestedBankMSB = UInt8(clamping: max(0, min(bankMSB, 127)))
+        let requestedBankLSB = UInt8(clamping: max(0, min(bankLSB, 127)))
+        let resolvedBankMSB: UInt8
+        let resolvedBankLSB: UInt8
+        if safeSourceChannel == 9, requestedBankMSB == 0, requestedBankLSB == 0 {
+            resolvedBankMSB = 0x78
+            resolvedBankLSB = 0
+        } else if requestedBankMSB == 0, requestedBankLSB == 0 {
+            resolvedBankMSB = defaultBankMSB
+            resolvedBankLSB = 0
+        } else {
+            resolvedBankMSB = requestedBankMSB
+            resolvedBankLSB = requestedBankLSB
+        }
 
-        sampler.sendPitchBend(pitchBend, onChannel: channel)
-        sampler.startNote(
-            noteNumber,
-            withVelocity: UInt8(clamping: max(1, min(velocity, 127))),
+        sampler.sendProgramChange(
+            safeProgram,
+            bankMSB: resolvedBankMSB,
+            bankLSB: resolvedBankLSB,
             onChannel: channel
         )
+        sampler.sendPitchBend(pitchBend, onChannel: channel)
+        sampler.sendController(11, withValue: 127, onChannel: channel)
 
         let voice = ActiveVoice(
             token: token,
             channel: channel,
             noteNumber: noteNumber,
+            velocity: safeVelocity,
             order: nextVoiceOrder,
-            startedAt: ProcessInfo.processInfo.systemUptime
+            releaseDelay: Self.releaseDelay(
+                sourceChannel: safeSourceChannel,
+                bankMSB: Int(requestedBankMSB),
+                bankLSB: Int(requestedBankLSB),
+                program: Int(safeProgram)
+            ),
+            startedAt: nil,
+            expression: 127
         )
         nextVoiceOrder = incrementing(nextVoiceOrder)
         activeVoices[token] = voice
         channelOwners[channel] = token
+
+        let safeDelay = delaySeconds.isFinite ? max(0, delaySeconds) : 0
+        if safeDelay <= 0 {
+            beginVoice(token)
+        } else {
+            let nanoseconds = UInt64(min(
+                Double(UInt64.max),
+                (safeDelay * 1_000_000_000).rounded(.up)
+            ))
+            pendingStartTasks[token] = Task { @MainActor [weak self] in
+                do {
+                    try await Task<Never, Never>.sleep(nanoseconds: nanoseconds)
+                } catch {
+                    return
+                }
+                self?.beginVoice(token)
+            }
+        }
         updateRunningStatus()
         return token
     }
 
     /// Releases exactly the voice represented by `token`.
     func release(_ token: VoiceToken) {
+        release(token, immediate: false)
+    }
+
+    func release(_ token: VoiceToken, immediate: Bool) {
         guard let voice = activeVoices[token], pendingReleaseTasks[token] == nil else {
             return
         }
 
-        let elapsed = ProcessInfo.processInfo.systemUptime - voice.startedAt
-        let remaining = Self.minimumTapDuration - elapsed
-        guard remaining > 0 else {
+        if let task = pendingStartTasks.removeValue(forKey: token) {
+            task.cancel()
+            activeVoices.removeValue(forKey: token)
+            channelOwners.removeValue(forKey: voice.channel)
+            updateRunningStatus()
+            return
+        }
+
+        if voice.startedAt == nil {
+            activeVoices.removeValue(forKey: token)
+            channelOwners.removeValue(forKey: voice.channel)
+            updateRunningStatus()
+            return
+        }
+
+        if immediate {
             finishRelease(token)
             return
         }
 
-        let nanoseconds = UInt64((remaining * 1_000_000_000).rounded(.up))
+        guard voice.releaseDelay > 0 else {
+            finishRelease(token)
+            return
+        }
+
+        let nanoseconds = UInt64((voice.releaseDelay * 1_000_000_000).rounded(.up))
         pendingReleaseTasks[token] = Task { @MainActor [weak self] in
             do {
                 try await Task<Never, Never>.sleep(nanoseconds: nanoseconds)
@@ -182,6 +261,21 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
             }
             self?.finishRelease(token)
         }
+    }
+
+    func setPressure(_ token: VoiceToken, expression: Int) {
+        guard var voice = activeVoices[token] else { return }
+        let value = UInt8(clamping: max(0, min(expression, 127)))
+        guard voice.expression != value else { return }
+        voice.expression = value
+        activeVoices[token] = voice
+        guard voice.startedAt != nil else { return }
+        sampler.sendPressure(
+            forKey: voice.noteNumber,
+            withValue: value,
+            onChannel: voice.channel
+        )
+        sampler.sendController(11, withValue: value, onChannel: voice.channel)
     }
 
     /// Stops every touch voice immediately, including delayed short-tap releases.
@@ -266,6 +360,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
                     bankMSB: bankMSB,
                     bankLSB: 0
                 )
+                defaultBankMSB = bankMSB
                 sampler.volume = 1.0
                 return
             } catch {
@@ -330,9 +425,23 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
 
         activeVoices.removeValue(forKey: oldest.token)
         channelOwners.removeValue(forKey: oldest.channel)
+        pendingStartTasks.removeValue(forKey: oldest.token)?.cancel()
         pendingReleaseTasks.removeValue(forKey: oldest.token)?.cancel()
         stop(oldest)
         return oldest.channel
+    }
+
+    private func beginVoice(_ token: VoiceToken) {
+        pendingStartTasks.removeValue(forKey: token)
+        guard var voice = activeVoices[token], voice.startedAt == nil else { return }
+        sampler.sendController(11, withValue: voice.expression, onChannel: voice.channel)
+        sampler.startNote(
+            voice.noteNumber,
+            withVelocity: voice.velocity,
+            onChannel: voice.channel
+        )
+        voice.startedAt = ProcessInfo.processInfo.systemUptime
+        activeVoices[token] = voice
     }
 
     private func finishRelease(_ token: VoiceToken) {
@@ -344,10 +453,15 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     }
 
     private func stop(_ voice: ActiveVoice) {
+        guard voice.startedAt != nil else { return }
         sampler.stopNote(voice.noteNumber, onChannel: voice.channel)
     }
 
     private func stopAllVoices() {
+        for task in pendingStartTasks.values {
+            task.cancel()
+        }
+        pendingStartTasks.removeAll(keepingCapacity: true)
         for task in pendingReleaseTasks.values {
             task.cancel()
         }
@@ -487,5 +601,27 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let normalized = max(-1.0, min(1.0, cents / pitchBendRangeCents))
         let value = Int(centerPitchBend) + Int((normalized * 8_191.0).rounded())
         return UInt16(clamping: value)
+    }
+
+    private static func releaseDelay(
+        sourceChannel: Int,
+        bankMSB: Int,
+        bankLSB: Int,
+        program: Int
+    ) -> TimeInterval {
+        let bank = bankMSB * 128 + bankLSB
+        if sourceChannel == 9 || bank == 128 || program >= 112 {
+            return 0
+        }
+        if (0...7).contains(program) {
+            return 0.68
+        }
+        if (16...23).contains(program)
+            || (40...79).contains(program)
+            || (88...95).contains(program)
+            || (80...87).contains(program) {
+            return 0
+        }
+        return 0.035
     }
 }
