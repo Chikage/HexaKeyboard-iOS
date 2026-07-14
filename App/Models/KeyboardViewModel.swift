@@ -140,6 +140,7 @@ final class KeyboardViewModel: ObservableObject {
         pointerID: Int,
         key: HexKey,
         velocity: Int,
+        expression: Int,
         eventTimeMilliseconds: Int64
     ) {
         if let previous = touchVoices.removeValue(forKey: pointerID) {
@@ -156,7 +157,8 @@ final class KeyboardViewModel: ObservableObject {
             touchVoices[pointerID] = try audioEngine.start(
                 pitch: key.audioPitch.midiPitch,
                 velocity: velocity,
-                program: midiProgramNumber
+                program: midiProgramNumber,
+                initialExpression: expression
             )
         } catch {
             // PolyphonicAudioEngine publishes its own localized status.

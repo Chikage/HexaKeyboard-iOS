@@ -393,6 +393,24 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
                 return 1
             }
         }
+
+        /// Keeps very short manual taps audible without adding a long fixed
+        /// tail. After this minimum hold, the SoundFont's own release envelope
+        /// remains responsible for the decay.
+        var minimumManualNoteDuration: TimeInterval {
+            switch self {
+            case .sustained:
+                return 0.11
+            case .piano:
+                return 0.10
+            case .general:
+                return 0.08
+            case .lead:
+                return 0.07
+            case .percussive:
+                return 0.04
+            }
+        }
     }
 
     private struct AudioEffectChain {
@@ -417,6 +435,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let scheduledStartUptimeNanoseconds: UInt64
         var startedAt: TimeInterval?
         var expression: UInt8
+        var releaseScheduled: Bool
     }
 
     private enum AudioEngineError: LocalizedError {
@@ -444,6 +463,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     private static let pitchBendRangeCents = 200.0
     private static let playbackChannels = (0..<16).map(UInt8.init)
     private static let defaultReverbMixIntensity: Float = 0.54
+    private static let channelRetuneGuardDuration: TimeInterval = 0.06
 
     private let audioSession = AVAudioSession.sharedInstance()
     private let audioSessionActivationExecutor = AudioSessionActivationExecutor()
@@ -457,6 +477,8 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
 
     private var activeVoices: [VoiceToken: ActiveVoice] = [:]
     private var channelOwners: [VoiceAddress: Set<VoiceToken>] = [:]
+    private var channelPitchBends: [VoiceAddress: UInt16] = [:]
+    private var channelRetuneReadyAt: [VoiceAddress: UInt64] = [:]
     private let scheduledMIDIExecutor = ScheduledMIDIExecutor()
     private var nextTokenValue: UInt64 = 1
     private var nextVoiceOrder: UInt64 = 1
@@ -545,6 +567,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         sourceChannel: Int = 0,
         bankMSB: Int = 0,
         bankLSB: Int = 0,
+        initialExpression: Int = 127,
         delaySeconds: TimeInterval = 0,
         automaticStopAfterSeconds: TimeInterval? = nil,
         allowsChannelSharing: Bool = false
@@ -564,6 +587,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let safeSourceChannel = max(0, min(sourceChannel, 15))
         let requestedBankMSB = UInt8(clamping: max(0, min(bankMSB, 127)))
         let requestedBankLSB = UInt8(clamping: max(0, min(bankLSB, 127)))
+        let safeExpression = UInt8(clamping: max(0, min(initialExpression, 127)))
         let instrument = InstrumentKey(
             program: Int(safeProgram),
             sourceChannel: safeSourceChannel,
@@ -591,10 +615,12 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
             pitchBend: pitchBend,
             allowsChannelSharing: allowsChannelSharing
         )
+        channelPitchBends[address] = pitchBend
+        channelRetuneReadyAt.removeValue(forKey: address)
 
         scheduledMIDIExecutor.performSynchronously(ScheduledMIDICommand {
             targetSampler.sendPitchBend(pitchBend, onChannel: address.channel)
-            targetSampler.sendController(11, withValue: 127, onChannel: address.channel)
+            targetSampler.sendController(11, withValue: safeExpression, onChannel: address.channel)
         })
 
         let safeDelay = delaySeconds.isFinite ? max(0, delaySeconds) : 0
@@ -611,7 +637,8 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
             allowsChannelSharing: allowsChannelSharing,
             scheduledStartUptimeNanoseconds: Self.uptimeDeadline(after: safeDelay),
             startedAt: nil,
-            expression: 127
+            expression: safeExpression,
+            releaseScheduled: false
         )
         nextVoiceOrder = incrementing(nextVoiceOrder)
         activeVoices[token] = voice
@@ -653,11 +680,43 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
 
     /// Releases exactly the voice represented by `token`.
     func release(_ token: VoiceToken) {
-        finishRelease(token)
+        guard var voice = activeVoices[token], !voice.releaseScheduled else {
+            return
+        }
+        guard let startedAt = voice.startedAt else {
+            finishRelease(token)
+            return
+        }
+
+        let minimumDuration = voice.address.instrument.renderProfile.minimumManualNoteDuration
+        let elapsed = max(0, ProcessInfo.processInfo.systemUptime - startedAt)
+        let remaining = max(0, minimumDuration - elapsed)
+        guard remaining > 0 else {
+            finishRelease(token)
+            return
+        }
+
+        voice.releaseScheduled = true
+        activeVoices[token] = voice
+        let completion = ScheduledMIDICommand { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.completeScheduledRelease(token)
+            }
+        }
+        scheduledMIDIExecutor.scheduleStop(
+            token: token.rawValue,
+            after: remaining,
+            stop: stopCommand(for: voice),
+            completion: completion
+        )
     }
 
-    func release(_ token: VoiceToken, immediate _: Bool) {
-        finishRelease(token)
+    func release(_ token: VoiceToken, immediate: Bool) {
+        if immediate {
+            finishRelease(token)
+        } else {
+            release(token)
+        }
     }
 
     func setPressure(_ token: VoiceToken, expression: Int) {
@@ -672,11 +731,9 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         }
         guard let targetSampler = samplers[voice.address.instrument] else { return }
         scheduledMIDIExecutor.performSynchronously(ScheduledMIDICommand {
-            targetSampler.sendPressure(
-                forKey: voice.noteNumber,
-                withValue: value,
-                onChannel: voice.address.channel
-            )
+            // Polyphonic aftertouch can be mapped to vibrato or pitch by a
+            // SoundFont. CC11 preserves pressure-based dynamics without
+            // introducing a delayed pitch-modulation effect.
             targetSampler.sendController(11, withValue: value, onChannel: voice.address.channel)
         })
     }
@@ -909,8 +966,22 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
             return compatible
         }
 
-        if let free = addresses.first(where: { channelOwners[$0]?.isEmpty != false }) {
-            return free
+        let freeAddresses = addresses.filter { channelOwners[$0]?.isEmpty != false }
+        if let matchingBend = freeAddresses.first(where: { channelPitchBends[$0] == pitchBend }) {
+            return matchingBend
+        }
+
+        let now = DispatchTime.now().uptimeNanoseconds
+        if let settled = freeAddresses.first(where: {
+            (channelRetuneReadyAt[$0] ?? 0) <= now
+        }) {
+            return settled
+        }
+
+        if let oldestRelease = freeAddresses.min(by: {
+            (channelRetuneReadyAt[$0] ?? 0) < (channelRetuneReadyAt[$1] ?? 0)
+        }) {
+            return oldestRelease
         }
 
         guard let selected = addresses.min(by: { first, second in
@@ -960,11 +1031,23 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         updateRunningStatus()
     }
 
+    private func completeScheduledRelease(_ token: VoiceToken) {
+        guard let voice = activeVoices[token], voice.releaseScheduled else {
+            return
+        }
+        activeVoices.removeValue(forKey: token)
+        removeOwner(voice)
+        updateRunningStatus()
+    }
+
     private func removeOwner(_ voice: ActiveVoice) {
         guard var owners = channelOwners[voice.address] else { return }
         owners.remove(voice.token)
         if owners.isEmpty {
             channelOwners.removeValue(forKey: voice.address)
+            channelRetuneReadyAt[voice.address] = Self.uptimeDeadline(
+                after: Self.channelRetuneGuardDuration
+            )
         } else {
             channelOwners[voice.address] = owners
         }
@@ -987,10 +1070,15 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     }
 
     private func stopAllVoices() {
+        let releasedAddresses = Array(channelOwners.keys)
         let stops = activeVoices.values.map(stopCommand(for:))
         scheduledMIDIExecutor.cancelAllAndStop(stops)
         activeVoices.removeAll(keepingCapacity: true)
         channelOwners.removeAll(keepingCapacity: true)
+        let retuneReadyAt = Self.uptimeDeadline(after: Self.channelRetuneGuardDuration)
+        for address in releasedAddresses {
+            channelRetuneReadyAt[address] = retuneReadyAt
+        }
         activeVoiceCount = 0
     }
 
@@ -1071,6 +1159,8 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         engine = AVAudioEngine()
         samplers.removeAll(keepingCapacity: true)
         effectChains.removeAll(keepingCapacity: true)
+        channelPitchBends.removeAll(keepingCapacity: true)
+        channelRetuneReadyAt.removeAll(keepingCapacity: true)
         graphIsConfigured = false
         sessionIsConfigured = false
         isReady = false

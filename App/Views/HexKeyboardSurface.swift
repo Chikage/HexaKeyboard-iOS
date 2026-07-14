@@ -160,7 +160,7 @@ struct HexKeyboardSurface: UIViewRepresentable {
     let playbackPositionSeconds: Double
     let activePlaybackNoteIndices: Set<Int>
     let onConstrainedPan: @MainActor (CGPoint) -> Void
-    let onKeyDown: @MainActor (Int, HexKey, Int, Int64) -> Void
+    let onKeyDown: @MainActor (Int, HexKey, Int, Int, Int64) -> Void
     let onKeyPressure: @MainActor (Int, Int) -> Void
     let onKeyUp: @MainActor (Int, Int64, Bool) -> Void
 
@@ -176,7 +176,7 @@ struct HexKeyboardSurface: UIViewRepresentable {
         playbackPositionSeconds: Double = 0,
         activePlaybackNoteIndices: Set<Int> = [],
         onConstrainedPan: @escaping @MainActor (CGPoint) -> Void = { _ in },
-        onKeyDown: @escaping @MainActor (Int, HexKey, Int, Int64) -> Void,
+        onKeyDown: @escaping @MainActor (Int, HexKey, Int, Int, Int64) -> Void,
         onKeyPressure: @escaping @MainActor (Int, Int) -> Void = { _, _ in },
         onKeyUp: @escaping @MainActor (Int, Int64, Bool) -> Void
     ) {
@@ -245,7 +245,7 @@ final class HexKeyboardCanvasView: UIControl {
     private var activePlaybackNoteIndices: Set<Int> = []
 
     private var onConstrainedPan: (@MainActor (CGPoint) -> Void)?
-    private var onKeyDown: (@MainActor (Int, HexKey, Int, Int64) -> Void)?
+    private var onKeyDown: (@MainActor (Int, HexKey, Int, Int, Int64) -> Void)?
     private var onKeyPressure: (@MainActor (Int, Int) -> Void)?
     private var onKeyUp: (@MainActor (Int, Int64, Bool) -> Void)?
 
@@ -299,7 +299,7 @@ final class HexKeyboardCanvasView: UIControl {
         playbackPositionSeconds: Double,
         activePlaybackNoteIndices: Set<Int>,
         onConstrainedPan: @escaping @MainActor (CGPoint) -> Void,
-        onKeyDown: @escaping @MainActor (Int, HexKey, Int, Int64) -> Void,
+        onKeyDown: @escaping @MainActor (Int, HexKey, Int, Int, Int64) -> Void,
         onKeyPressure: @escaping @MainActor (Int, Int) -> Void,
         onKeyUp: @escaping @MainActor (Int, Int64, Bool) -> Void
     ) {
@@ -534,7 +534,7 @@ final class HexKeyboardCanvasView: UIControl {
             }
             if let nextKey, let force {
                 touchCoordinates[identifier] = nextKey.coordinate
-                onKeyDown?(pointer, nextKey, force.velocity, eventTime)
+                onKeyDown?(pointer, nextKey, force.velocity, force.expression, eventTime)
             }
         }
 
@@ -1119,7 +1119,13 @@ final class HexKeyboardCanvasView: UIControl {
                 guard let self else { return false }
                 let pointer = -10_000 - index
                 let eventTime = self.currentUptimeMilliseconds()
-                self.onKeyDown?(pointer, key, TouchForce.fixed.velocity, eventTime)
+                self.onKeyDown?(
+                    pointer,
+                    key,
+                    TouchForce.fixed.velocity,
+                    TouchForce.fixed.expression,
+                    eventTime
+                )
                 self.onKeyPressure?(pointer, TouchForce.fixed.expression)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) { [weak self] in
                     guard let self else { return }
