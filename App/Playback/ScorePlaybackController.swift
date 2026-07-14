@@ -42,7 +42,8 @@ final class ScorePlaybackController {
     private var activeVoices: [Int: PolyphonicAudioEngine.VoiceToken] = [:]
     private var audioCursor = 0
     private var displayLink: CADisplayLink?
-    private var lastFrameTimestamp: CFTimeInterval = 0
+    private var clockStartTimestamp: CFTimeInterval?
+    private var clockStartPosition = 0.0
     private var visualTailActive = false
     private var closed = false
     private lazy var displayLinkProxy = DisplayLinkProxy(owner: self)
@@ -94,7 +95,8 @@ final class ScorePlaybackController {
             : max(0, state.playheadSeconds)
         stopScheduledAudio()
         resetAudioCursor(score: score, positionSeconds: position)
-        lastFrameTimestamp = 0
+        clockStartTimestamp = CACurrentMediaTime()
+        clockStartPosition = position
         state.playheadSeconds = position
         state.playing = true
         state.activeScoreIndices = []
@@ -151,18 +153,11 @@ final class ScorePlaybackController {
         }
 
         let timestamp = displayLink.timestamp
-        let deltaSeconds: Double
-        if lastFrameTimestamp == 0 {
-            deltaSeconds = 0
-        } else {
-            deltaSeconds = (timestamp - lastFrameTimestamp)
-                .clamped(to: 0...Self.maximumFrameDeltaSeconds)
-        }
-        lastFrameTimestamp = timestamp
+        let elapsed = max(0, timestamp - (clockStartTimestamp ?? timestamp))
 
         if visualTailActive {
             let tailEnd = score.duration + PLAYBACK_COMPLETION_BURST_SECONDS
-            let position = min(tailEnd, state.playheadSeconds + deltaSeconds)
+            let position = min(tailEnd, clockStartPosition + elapsed)
             if position >= tailEnd - Self.playbackEpsilonSeconds {
                 visualTailActive = false
                 state.playheadSeconds = tailEnd
@@ -177,12 +172,14 @@ final class ScorePlaybackController {
             return
         }
 
-        let position = min(score.duration, state.playheadSeconds + deltaSeconds)
+        let position = min(score.duration, clockStartPosition + elapsed)
         scheduleAudio(score: score, positionSeconds: position)
 
         if position >= score.duration - Self.playbackEpsilonSeconds {
             stopScheduledAudio()
             visualTailActive = true
+            clockStartTimestamp = timestamp
+            clockStartPosition = score.duration
             state.playheadSeconds = score.duration
             state.playing = false
             state.activeScoreIndices = []
@@ -225,7 +222,8 @@ final class ScorePlaybackController {
                 sourceChannel: note.channel,
                 bankMSB: note.bankMsb,
                 bankLSB: note.bankLsb,
-                delaySeconds: delaySeconds
+                delaySeconds: delaySeconds,
+                automaticStopAfterSeconds: max(0, note.end - positionSeconds)
             ) {
                 activeVoices[audioCursor] = token
             }
@@ -267,12 +265,12 @@ final class ScorePlaybackController {
     private func stopClock() {
         displayLink?.invalidate()
         displayLink = nil
-        lastFrameTimestamp = 0
+        clockStartTimestamp = nil
+        clockStartPosition = state.playheadSeconds
     }
 
     private static let audioLookaheadSeconds = 0.18
     private static let playbackEpsilonSeconds = 0.002
-    private static let maximumFrameDeltaSeconds = 0.08
 }
 
 @MainActor
@@ -284,18 +282,16 @@ private final class DisplayLinkProxy: NSObject {
     }
 
     @objc func tick(_ displayLink: CADisplayLink) {
-        owner?.handleFrame(displayLink)
+        guard let owner else {
+            displayLink.invalidate()
+            return
+        }
+        owner.handleFrame(displayLink)
     }
 }
 
 private extension Collection {
     subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
-    }
-}
-
-private extension Comparable {
-    func clamped(to range: ClosedRange<Self>) -> Self {
-        min(max(self, range.lowerBound), range.upperBound)
     }
 }

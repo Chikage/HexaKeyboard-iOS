@@ -29,6 +29,9 @@ public enum MuseScoreConversionError: Error, LocalizedError, Equatable {
 /// Converts MuseScore `.mscx` XML and `.mscz` archives to Standard MIDI or
 /// the MIDX extension used by HexaKeyboard for per-note cent offsets.
 public enum MuseScoreConverter {
+    private static let maximumDocumentBytes = 64 * 1_024 * 1_024
+    private static let maximumLocationMeasures = 1_000_000
+    private static let maximumNumericMagnitude = 1_000_000_000.0
     private static let defaultDivision = 480
     private static let defaultBPM = 120.0
     private static let defaultVelocity = 80
@@ -80,6 +83,11 @@ public enum MuseScoreConverter {
     }
 
     private static func parseScore(_ input: Data, fileName: String) throws -> ScoreData {
+        guard input.count <= maximumDocumentBytes else {
+            throw MuseScoreConversionError.invalidArchive(
+                "MuseScore document exceeds the 64 MB limit"
+            )
+        }
         let xml = try readMuseScoreXML(input, fileName: fileName)
         let root = try parseXML(xml)
         let sourceName = fileName.isEmpty ? "selected-file" : fileName
@@ -149,7 +157,35 @@ public enum MuseScoreConverter {
             let detail = parser.parserError?.localizedDescription ?? "Empty XML document"
             throw MuseScoreConversionError.invalidXML("Could not parse MuseScore XML: \(detail)")
         }
+        try validateXMLNumericBounds(root)
         return root
+    }
+
+    private static func validateXMLNumericBounds(_ node: XMLNode) throws {
+        var pending = [node]
+        while let current = pending.popLast() {
+            let value = current.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let numeric = Double(value), numeric.isFinite {
+                let limit = current.name == "measures"
+                    ? Double(maximumLocationMeasures)
+                    : maximumNumericMagnitude
+                if abs(numeric) > limit {
+                    throw MuseScoreConversionError.invalidXML(
+                        "MuseScore numeric value is outside the supported range: \(current.name)"
+                    )
+                }
+            }
+            for (name, rawValue) in current.attributes {
+                let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let numeric = Double(trimmed), numeric.isFinite,
+                   abs(numeric) > maximumNumericMagnitude {
+                    throw MuseScoreConversionError.invalidXML(
+                        "MuseScore numeric attribute is outside the supported range: \(name)"
+                    )
+                }
+            }
+            pending.append(contentsOf: current.children)
+        }
     }
 
     private static func firstRootfilePath(_ bytes: Data) throws -> String? {
@@ -241,6 +277,13 @@ private extension MuseScoreConverter {
                 let checksum = Self.u32(data, offset + 16)
                 let compressedSize = Int(Self.u32(data, offset + 20))
                 let uncompressedSize = Int(Self.u32(data, offset + 24))
+                guard compressedSize <= MuseScoreConverter.maximumDocumentBytes,
+                      uncompressedSize <= MuseScoreConverter.maximumDocumentBytes
+                else {
+                    throw MuseScoreConversionError.invalidArchive(
+                        "MSCZ entry exceeds the 64 MB limit"
+                    )
+                }
                 let nameLength = Int(Self.u16(data, offset + 28))
                 let extraLength = Int(Self.u16(data, offset + 30))
                 let commentLength = Int(Self.u16(data, offset + 32))
@@ -282,6 +325,13 @@ private extension MuseScoreConverter {
         }
 
         func data(for entry: ZIPEntry) throws -> Data {
+            guard entry.compressedSize <= MuseScoreConverter.maximumDocumentBytes,
+                  entry.uncompressedSize <= MuseScoreConverter.maximumDocumentBytes
+            else {
+                throw MuseScoreConversionError.invalidArchive(
+                    "MSCZ entry exceeds the 64 MB limit: \(entry.name)"
+                )
+            }
             let header = entry.localHeaderOffset
             guard header >= 0,
                   header + 30 <= bytes.count,
@@ -2912,10 +2962,20 @@ private extension MuseScoreConverter {
         guard let location else { return 0 }
         var ticks = 0
         if let measures = firstChild(location, "measures") {
-            ticks += intText(measures, 0) * max(1, measureTicks)
+            let measureCount = intText(measures, 0)
+            let (measureOffset, overflow) = measureCount.multipliedReportingOverflow(
+                by: max(1, measureTicks)
+            )
+            ticks = overflow
+                ? (measureCount < 0 ? Int.min / 4 : Int.max / 4)
+                : measureOffset
         }
         if let fractions = firstChild(location, "fractions") {
-            ticks += ratioTicks(text(fractions), division: division)
+            let fractionOffset = ratioTicks(text(fractions), division: division)
+            let (sum, overflow) = ticks.addingReportingOverflow(fractionOffset)
+            ticks = overflow
+                ? (fractionOffset < 0 ? Int.min / 4 : Int.max / 4)
+                : sum
         }
         return ticks
     }

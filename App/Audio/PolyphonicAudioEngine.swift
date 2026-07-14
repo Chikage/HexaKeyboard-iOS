@@ -1,11 +1,196 @@
 import AVFoundation
 import Combine
+import Dispatch
 import Foundation
 
-/// A small SoundFont-backed engine for independently tuned multitouch notes.
+private struct ScheduledMIDICommand: @unchecked Sendable {
+    let perform: () -> Void
+}
+
+/// Runs future MIDI starts independently of the main actor.
 ///
-/// Pitch is expressed as a floating-point MIDI note. Each active touch owns a
-/// melodic MIDI channel so that its pitch bend cannot retune another voice.
+/// Every command is serialized on the same high-priority queue. Cancelling a
+/// token synchronously removes its future start before sending Note Off, so an
+/// address can be safely reused as soon as cancellation returns.
+private final class ScheduledMIDIExecutor: @unchecked Sendable {
+    private struct Entry {
+        let generation: UInt64
+        var started: Bool
+    }
+
+    private let queue = DispatchQueue(
+        label: "icu.ringona.hexakeyboard.midi-scheduler",
+        qos: .userInteractive
+    )
+    private var entries: [UInt64: Entry] = [:]
+    private var nextGeneration: UInt64 = 1
+
+    func scheduleDelayedStart(
+        token: UInt64,
+        startAfter delaySeconds: TimeInterval,
+        stopAfter automaticStopSeconds: TimeInterval?,
+        start: ScheduledMIDICommand,
+        stop: ScheduledMIDICommand
+    ) {
+        let startDeadline = Self.deadline(after: delaySeconds)
+        let stopDeadline = automaticStopSeconds.map { Self.deadline(after: $0) }
+
+        queue.sync {
+            let generation = makeGeneration()
+            entries[token] = Entry(generation: generation, started: false)
+
+            queue.asyncAfter(deadline: startDeadline) { [weak self] in
+                guard let self,
+                      var entry = self.entries[token],
+                      entry.generation == generation else {
+                    return
+                }
+
+                // If the scheduler itself was delayed past the note end, do
+                // not emit a stale Note On followed by a catch-up Note Off.
+                if let stopDeadline, DispatchTime.now() >= stopDeadline {
+                    self.entries.removeValue(forKey: token)
+                    return
+                }
+
+                entry.started = true
+                self.entries[token] = entry
+                start.perform()
+            }
+
+            if let stopDeadline {
+                queue.asyncAfter(deadline: stopDeadline) { [weak self] in
+                    guard let self,
+                          let entry = self.entries[token],
+                          entry.generation == generation else {
+                        return
+                    }
+                    self.entries.removeValue(forKey: token)
+                    if entry.started {
+                        stop.perform()
+                    }
+                }
+            }
+        }
+    }
+
+    func registerStartedVoice(
+        token: UInt64,
+        stopAfter automaticStopSeconds: TimeInterval,
+        stop: ScheduledMIDICommand
+    ) {
+        scheduleStop(
+            token: token,
+            after: automaticStopSeconds,
+            stop: stop,
+            completion: nil
+        )
+    }
+
+    func scheduleStop(
+        token: UInt64,
+        after delaySeconds: TimeInterval,
+        stop: ScheduledMIDICommand,
+        completion: ScheduledMIDICommand?
+    ) {
+        let stopDeadline = Self.deadline(after: delaySeconds)
+        queue.sync {
+            let generation = makeGeneration()
+            entries[token] = Entry(generation: generation, started: true)
+            queue.asyncAfter(deadline: stopDeadline) { [weak self] in
+                guard let self,
+                      let entry = self.entries[token],
+                      entry.generation == generation else {
+                    return
+                }
+                self.entries.removeValue(forKey: token)
+                stop.perform()
+                completion?.perform()
+            }
+        }
+    }
+
+    func cancelAndStop(token: UInt64, stop: ScheduledMIDICommand) {
+        queue.sync {
+            entries.removeValue(forKey: token)
+            stop.perform()
+        }
+    }
+
+    func performSynchronously(_ command: ScheduledMIDICommand) {
+        queue.sync {
+            command.perform()
+        }
+    }
+
+    func cancelAllAndStop(_ stops: [ScheduledMIDICommand]) {
+        queue.sync {
+            entries.removeAll(keepingCapacity: true)
+            for stop in stops {
+                stop.perform()
+            }
+        }
+    }
+
+#if DEBUG
+    func runReleaseRaceSelfTest() {
+        let cancelledStop = DispatchSemaphore(value: 0)
+        let cancelledCompletion = DispatchSemaphore(value: 0)
+        scheduleStop(
+            token: 1,
+            after: 0.02,
+            stop: ScheduledMIDICommand { cancelledStop.signal() },
+            completion: ScheduledMIDICommand { cancelledCompletion.signal() }
+        )
+        cancelAndStop(token: 1, stop: ScheduledMIDICommand {})
+        precondition(cancelledStop.wait(timeout: .now() + 0.06) == .timedOut)
+        precondition(cancelledCompletion.wait(timeout: .now()) == .timedOut)
+
+        let oldCompletion = DispatchSemaphore(value: 0)
+        let newStop = DispatchSemaphore(value: 0)
+        let newCompletion = DispatchSemaphore(value: 0)
+        scheduleStop(
+            token: 2,
+            after: 0.05,
+            stop: ScheduledMIDICommand {},
+            completion: ScheduledMIDICommand { oldCompletion.signal() }
+        )
+        scheduleStop(
+            token: 2,
+            after: 0.01,
+            stop: ScheduledMIDICommand { newStop.signal() },
+            completion: ScheduledMIDICommand { newCompletion.signal() }
+        )
+        precondition(newStop.wait(timeout: .now() + 0.2) == .success)
+        precondition(newCompletion.wait(timeout: .now() + 0.2) == .success)
+        precondition(oldCompletion.wait(timeout: .now() + 0.08) == .timedOut)
+        print("HEX_AUDIO_RELEASE_RACE_SELF_TEST_PASSED")
+    }
+#endif
+
+    private func makeGeneration() -> UInt64 {
+        let generation = nextGeneration
+        nextGeneration = nextGeneration == UInt64.max ? 1 : nextGeneration + 1
+        return generation
+    }
+
+    private static func deadline(after seconds: TimeInterval) -> DispatchTime {
+        let safeSeconds = seconds.isFinite ? max(0, seconds) : 0
+        let maximumSeconds = Double(UInt64.max) / 1_000_000_000
+        let nanoseconds = safeSeconds >= maximumSeconds
+            ? UInt64.max
+            : UInt64((safeSeconds * 1_000_000_000).rounded(.up))
+        let now = DispatchTime.now().uptimeNanoseconds
+        let (sum, overflowed) = now.addingReportingOverflow(nanoseconds)
+        return DispatchTime(uptimeNanoseconds: overflowed ? UInt64.max : sum)
+    }
+}
+
+/// A SoundFont-backed engine for independently tuned multitouch notes.
+///
+/// Pitch is expressed as a floating-point MIDI note. Each active touch owns one
+/// melodic MIDI channel in a four-sampler pool so that its pitch bend cannot
+/// retune another voice. This provides 60 independent tuning addresses.
 @MainActor
 final class PolyphonicAudioEngine: NSObject, ObservableObject {
     struct VoiceToken: Hashable, Sendable {
@@ -16,15 +201,22 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     @Published private(set) var isReady = false
     @Published private(set) var activeVoiceCount = 0
 
+    private struct VoiceAddress: Hashable {
+        let samplerIndex: Int
+        let channel: UInt8
+    }
+
     private struct ActiveVoice {
         let token: VoiceToken
-        let channel: UInt8
+        let address: VoiceAddress
         let noteNumber: UInt8
         let velocity: UInt8
         let order: UInt64
         let releaseDelay: TimeInterval
+        let scheduledStartUptimeNanoseconds: UInt64
         var startedAt: TimeInterval?
         var expression: UInt8
+        var releaseGeneration: UInt64?
     }
 
     private enum AudioEngineError: LocalizedError {
@@ -50,13 +242,15 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     private static let soundFontName = "DefaultSoundFont"
     private static let centerPitchBend = UInt16(8_192)
     private static let pitchBendRangeCents = 200.0
+    private static let samplerPoolSize = 4
     private static let melodicChannels: [UInt8] = (0..<16)
         .filter { $0 != 9 }
         .map(UInt8.init)
 
     private let audioSession = AVAudioSession.sharedInstance()
     private var engine = AVAudioEngine()
-    private var sampler = AVAudioUnitSampler()
+    private var samplers = (0..<samplerPoolSize).map { _ in AVAudioUnitSampler() }
+    private var samplerMixer = AVAudioMixerNode()
     private var earlyReflectionDelay = AVAudioUnitDelay()
     private var reverb = AVAudioUnitReverb()
     private var graphIsConfigured = false
@@ -67,14 +261,20 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     private var wasRunningBeforeInterruption = false
 
     private var activeVoices: [VoiceToken: ActiveVoice] = [:]
-    private var channelOwners: [UInt8: VoiceToken] = [:]
-    private var pendingStartTasks: [VoiceToken: Task<Void, Never>] = [:]
-    private var pendingReleaseTasks: [VoiceToken: Task<Void, Never>] = [:]
+    private var channelOwners: [VoiceAddress: VoiceToken] = [:]
+    private let scheduledMIDIExecutor = ScheduledMIDIExecutor()
     private var nextTokenValue: UInt64 = 1
     private var nextVoiceOrder: UInt64 = 1
+    private var nextReleaseGeneration: UInt64 = 1
 
     override init() {
         super.init()
+
+#if DEBUG
+        if ProcessInfo.processInfo.environment["HEX_AUDIO_RELEASE_SELF_TEST"] == "1" {
+            scheduledMIDIExecutor.runReleaseRaceSelfTest()
+        }
+#endif
 
         let notifications = NotificationCenter.default
         notifications.addObserver(
@@ -134,7 +334,8 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         sourceChannel: Int = 0,
         bankMSB: Int = 0,
         bankLSB: Int = 0,
-        delaySeconds: TimeInterval = 0
+        delaySeconds: TimeInterval = 0,
+        automaticStopAfterSeconds: TimeInterval? = nil
     ) throws -> VoiceToken {
         let roundedNote = pitch.isFinite ? Int(floor(pitch + 0.5)) : -1
         guard pitch.isFinite, (0...127).contains(roundedNote) else {
@@ -146,7 +347,8 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         try prepare()
 
         let token = makeToken()
-        let channel = try allocateChannel(for: token)
+        let address = try allocateAddress(for: token)
+        let targetSampler = samplers[address.samplerIndex]
         let noteNumber = UInt8(roundedNote)
         let cents = (pitch - Double(noteNumber)) * 100.0
         let pitchBend = Self.pitchBendValue(forCents: cents)
@@ -168,18 +370,24 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
             resolvedBankLSB = requestedBankLSB
         }
 
-        sampler.sendProgramChange(
-            safeProgram,
-            bankMSB: resolvedBankMSB,
-            bankLSB: resolvedBankLSB,
-            onChannel: channel
-        )
-        sampler.sendPitchBend(pitchBend, onChannel: channel)
-        sampler.sendController(11, withValue: 127, onChannel: channel)
+        scheduledMIDIExecutor.performSynchronously(ScheduledMIDICommand {
+            targetSampler.sendProgramChange(
+                safeProgram,
+                bankMSB: resolvedBankMSB,
+                bankLSB: resolvedBankLSB,
+                onChannel: address.channel
+            )
+            targetSampler.sendPitchBend(pitchBend, onChannel: address.channel)
+            targetSampler.sendController(11, withValue: 127, onChannel: address.channel)
+        })
 
+        let safeDelay = delaySeconds.isFinite ? max(0, delaySeconds) : 0
+        let safeAutomaticStop = automaticStopAfterSeconds.flatMap { seconds in
+            seconds.isFinite && seconds > 0 ? seconds : nil
+        }
         let voice = ActiveVoice(
             token: token,
-            channel: channel,
+            address: address,
             noteNumber: noteNumber,
             velocity: safeVelocity,
             order: nextVoiceOrder,
@@ -189,29 +397,44 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
                 bankLSB: Int(requestedBankLSB),
                 program: Int(safeProgram)
             ),
+            scheduledStartUptimeNanoseconds: Self.uptimeDeadline(after: safeDelay),
             startedAt: nil,
-            expression: 127
+            expression: 127,
+            releaseGeneration: nil
         )
         nextVoiceOrder = incrementing(nextVoiceOrder)
         activeVoices[token] = voice
-        channelOwners[channel] = token
+        channelOwners[address] = token
 
-        let safeDelay = delaySeconds.isFinite ? max(0, delaySeconds) : 0
         if safeDelay <= 0 {
             beginVoice(token)
-        } else {
-            let nanoseconds = UInt64(min(
-                Double(UInt64.max),
-                (safeDelay * 1_000_000_000).rounded(.up)
-            ))
-            pendingStartTasks[token] = Task { @MainActor [weak self] in
-                do {
-                    try await Task<Never, Never>.sleep(nanoseconds: nanoseconds)
-                } catch {
-                    return
-                }
-                self?.beginVoice(token)
+            if let safeAutomaticStop {
+                scheduledMIDIExecutor.registerStartedVoice(
+                    token: token.rawValue,
+                    stopAfter: safeAutomaticStop,
+                    stop: stopCommand(for: voice)
+                )
             }
+        } else {
+            let startCommand = ScheduledMIDICommand {
+                targetSampler.sendController(
+                    11,
+                    withValue: voice.expression,
+                    onChannel: address.channel
+                )
+                targetSampler.startNote(
+                    noteNumber,
+                    withVelocity: safeVelocity,
+                    onChannel: address.channel
+                )
+            }
+            scheduledMIDIExecutor.scheduleDelayedStart(
+                token: token.rawValue,
+                startAfter: safeDelay,
+                stopAfter: safeAutomaticStop,
+                start: startCommand,
+                stop: stopCommand(for: voice)
+            )
         }
         updateRunningStatus()
         return token
@@ -223,21 +446,15 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
     }
 
     func release(_ token: VoiceToken, immediate: Bool) {
-        guard let voice = activeVoices[token], pendingReleaseTasks[token] == nil else {
+        guard var voice = activeVoices[token], voice.releaseGeneration == nil else {
             return
         }
 
-        if let task = pendingStartTasks.removeValue(forKey: token) {
-            task.cancel()
+        if voice.startedAt == nil,
+           DispatchTime.now().uptimeNanoseconds < voice.scheduledStartUptimeNanoseconds {
+            stop(voice)
             activeVoices.removeValue(forKey: token)
-            channelOwners.removeValue(forKey: voice.channel)
-            updateRunningStatus()
-            return
-        }
-
-        if voice.startedAt == nil {
-            activeVoices.removeValue(forKey: token)
-            channelOwners.removeValue(forKey: voice.channel)
+            channelOwners.removeValue(forKey: voice.address)
             updateRunningStatus()
             return
         }
@@ -252,15 +469,18 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
             return
         }
 
-        let nanoseconds = UInt64((voice.releaseDelay * 1_000_000_000).rounded(.up))
-        pendingReleaseTasks[token] = Task { @MainActor [weak self] in
-            do {
-                try await Task<Never, Never>.sleep(nanoseconds: nanoseconds)
-            } catch {
-                return
-            }
-            self?.finishRelease(token)
-        }
+        let releaseGeneration = makeReleaseGeneration()
+        voice.releaseGeneration = releaseGeneration
+        activeVoices[token] = voice
+        scheduledMIDIExecutor.scheduleStop(
+            token: token.rawValue,
+            after: voice.releaseDelay,
+            stop: stopCommand(for: voice),
+            completion: scheduledReleaseCompletion(
+                token: token,
+                releaseGeneration: releaseGeneration
+            )
+        )
     }
 
     func setPressure(_ token: VoiceToken, expression: Int) {
@@ -269,13 +489,19 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         guard voice.expression != value else { return }
         voice.expression = value
         activeVoices[token] = voice
-        guard voice.startedAt != nil else { return }
-        sampler.sendPressure(
-            forKey: voice.noteNumber,
-            withValue: value,
-            onChannel: voice.channel
-        )
-        sampler.sendController(11, withValue: value, onChannel: voice.channel)
+        guard voice.startedAt != nil
+                || DispatchTime.now().uptimeNanoseconds >= voice.scheduledStartUptimeNanoseconds else {
+            return
+        }
+        let targetSampler = samplers[voice.address.samplerIndex]
+        scheduledMIDIExecutor.performSynchronously(ScheduledMIDICommand {
+            targetSampler.sendPressure(
+                forKey: voice.noteNumber,
+                withValue: value,
+                onChannel: voice.address.channel
+            )
+            targetSampler.sendController(11, withValue: value, onChannel: voice.address.channel)
+        })
     }
 
     /// Stops every touch voice immediately, including delayed short-tap releases.
@@ -330,7 +556,7 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         }
 
         let soundFontURL = try bundledSoundFontURL()
-        try loadDefaultInstrument(from: soundFontURL)
+        try loadDefaultInstruments(from: soundFontURL)
 
         earlyReflectionDelay.delayTime = 0.018
         earlyReflectionDelay.wetDryMix = 4.5
@@ -339,38 +565,64 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         reverb.loadFactoryPreset(.largeHall)
         reverb.wetDryMix = 36.7
 
-        engine.attach(sampler)
+        for sampler in samplers {
+            engine.attach(sampler)
+        }
+        engine.attach(samplerMixer)
         engine.attach(earlyReflectionDelay)
         engine.attach(reverb)
-        engine.connect(sampler, to: earlyReflectionDelay, format: nil)
+        for sampler in samplers {
+            engine.connect(sampler, to: samplerMixer, format: nil)
+        }
+        engine.connect(samplerMixer, to: earlyReflectionDelay, format: nil)
         engine.connect(earlyReflectionDelay, to: reverb, format: nil)
         engine.connect(reverb, to: engine.mainMixerNode, format: nil)
         graphIsConfigured = true
     }
 
-    private func loadDefaultInstrument(from url: URL) throws {
+    private func loadDefaultInstruments(from url: URL) throws {
         let candidateBanks: [UInt8] = [0x79, 0x00]
         var lastError: Error?
+        var selectedBankMSB: UInt8?
 
         for bankMSB in candidateBanks {
             do {
-                try sampler.loadSoundBankInstrument(
+                try samplers[0].loadSoundBankInstrument(
                     at: url,
                     program: 0,
                     bankMSB: bankMSB,
                     bankLSB: 0
                 )
-                defaultBankMSB = bankMSB
-                sampler.volume = 1.0
-                return
+                selectedBankMSB = bankMSB
+                break
             } catch {
                 lastError = error
             }
         }
 
-        throw AudioEngineError.soundFontLoadFailed(
-            lastError?.localizedDescription ?? "未知错误"
-        )
+        guard let selectedBankMSB else {
+            throw AudioEngineError.soundFontLoadFailed(
+                lastError?.localizedDescription ?? "未知错误"
+            )
+        }
+
+        do {
+            for sampler in samplers.dropFirst() {
+                try sampler.loadSoundBankInstrument(
+                    at: url,
+                    program: 0,
+                    bankMSB: selectedBankMSB,
+                    bankLSB: 0
+                )
+            }
+        } catch {
+            throw AudioEngineError.soundFontLoadFailed(error.localizedDescription)
+        }
+
+        defaultBankMSB = selectedBankMSB
+        for sampler in samplers {
+            sampler.volume = 1.0
+        }
     }
 
     private func bundledSoundFontURL() throws -> URL {
@@ -400,23 +652,33 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
             return
         }
 
-        for channel in Self.melodicChannels {
-            // RPN 0,0: pitch bend sensitivity = two semitones, zero cents.
-            sampler.sendController(101, withValue: 0, onChannel: channel)
-            sampler.sendController(100, withValue: 0, onChannel: channel)
-            sampler.sendController(6, withValue: 2, onChannel: channel)
-            sampler.sendController(38, withValue: 0, onChannel: channel)
-            sampler.sendController(101, withValue: 127, onChannel: channel)
-            sampler.sendController(100, withValue: 127, onChannel: channel)
-            sampler.sendPitchBend(Self.centerPitchBend, onChannel: channel)
-        }
+        let configuredSamplers = samplers
+        let melodicChannels = Self.melodicChannels
+        scheduledMIDIExecutor.performSynchronously(ScheduledMIDICommand {
+            for sampler in configuredSamplers {
+                for channel in melodicChannels {
+                    // RPN 0,0: pitch bend sensitivity = two semitones, zero cents.
+                    sampler.sendController(101, withValue: 0, onChannel: channel)
+                    sampler.sendController(100, withValue: 0, onChannel: channel)
+                    sampler.sendController(6, withValue: 2, onChannel: channel)
+                    sampler.sendController(38, withValue: 0, onChannel: channel)
+                    sampler.sendController(101, withValue: 127, onChannel: channel)
+                    sampler.sendController(100, withValue: 127, onChannel: channel)
+                    sampler.sendPitchBend(Self.centerPitchBend, onChannel: channel)
+                }
+            }
+        })
 
         channelsAreConfigured = true
     }
 
-    private func allocateChannel(for token: VoiceToken) throws -> UInt8 {
-        if let freeChannel = Self.melodicChannels.first(where: { channelOwners[$0] == nil }) {
-            return freeChannel
+    private func allocateAddress(for token: VoiceToken) throws -> VoiceAddress {
+        for samplerIndex in samplers.indices {
+            if let channel = Self.melodicChannels.first(where: {
+                channelOwners[VoiceAddress(samplerIndex: samplerIndex, channel: $0)] == nil
+            }) {
+                return VoiceAddress(samplerIndex: samplerIndex, channel: channel)
+            }
         }
 
         guard let oldest = activeVoices.values.min(by: { $0.order < $1.order }) else {
@@ -424,51 +686,81 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         }
 
         activeVoices.removeValue(forKey: oldest.token)
-        channelOwners.removeValue(forKey: oldest.channel)
-        pendingStartTasks.removeValue(forKey: oldest.token)?.cancel()
-        pendingReleaseTasks.removeValue(forKey: oldest.token)?.cancel()
+        channelOwners.removeValue(forKey: oldest.address)
         stop(oldest)
-        return oldest.channel
+        return oldest.address
     }
 
     private func beginVoice(_ token: VoiceToken) {
-        pendingStartTasks.removeValue(forKey: token)
         guard var voice = activeVoices[token], voice.startedAt == nil else { return }
-        sampler.sendController(11, withValue: voice.expression, onChannel: voice.channel)
-        sampler.startNote(
-            voice.noteNumber,
-            withVelocity: voice.velocity,
-            onChannel: voice.channel
-        )
+        let targetSampler = samplers[voice.address.samplerIndex]
+        scheduledMIDIExecutor.performSynchronously(ScheduledMIDICommand {
+            targetSampler.sendController(
+                11,
+                withValue: voice.expression,
+                onChannel: voice.address.channel
+            )
+            targetSampler.startNote(
+                voice.noteNumber,
+                withVelocity: voice.velocity,
+                onChannel: voice.address.channel
+            )
+        })
         voice.startedAt = ProcessInfo.processInfo.systemUptime
         activeVoices[token] = voice
     }
 
     private func finishRelease(_ token: VoiceToken) {
-        pendingReleaseTasks.removeValue(forKey: token)
         guard let voice = activeVoices.removeValue(forKey: token) else { return }
         stop(voice)
-        channelOwners.removeValue(forKey: voice.channel)
+        channelOwners.removeValue(forKey: voice.address)
+        updateRunningStatus()
+    }
+
+    private func scheduledReleaseCompletion(
+        token: VoiceToken,
+        releaseGeneration: UInt64
+    ) -> ScheduledMIDICommand {
+        ScheduledMIDICommand { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.completeScheduledRelease(
+                    token,
+                    releaseGeneration: releaseGeneration
+                )
+            }
+        }
+    }
+
+    private func completeScheduledRelease(
+        _ token: VoiceToken,
+        releaseGeneration: UInt64
+    ) {
+        guard let voice = activeVoices[token],
+              voice.releaseGeneration == releaseGeneration else {
+            return
+        }
+        activeVoices.removeValue(forKey: token)
+        channelOwners.removeValue(forKey: voice.address)
         updateRunningStatus()
     }
 
     private func stop(_ voice: ActiveVoice) {
-        guard voice.startedAt != nil else { return }
-        sampler.stopNote(voice.noteNumber, onChannel: voice.channel)
+        scheduledMIDIExecutor.cancelAndStop(
+            token: voice.token.rawValue,
+            stop: stopCommand(for: voice)
+        )
+    }
+
+    private func stopCommand(for voice: ActiveVoice) -> ScheduledMIDICommand {
+        let targetSampler = samplers[voice.address.samplerIndex]
+        return ScheduledMIDICommand {
+            targetSampler.stopNote(voice.noteNumber, onChannel: voice.address.channel)
+        }
     }
 
     private func stopAllVoices() {
-        for task in pendingStartTasks.values {
-            task.cancel()
-        }
-        pendingStartTasks.removeAll(keepingCapacity: true)
-        for task in pendingReleaseTasks.values {
-            task.cancel()
-        }
-        pendingReleaseTasks.removeAll(keepingCapacity: true)
-        for voice in activeVoices.values {
-            stop(voice)
-        }
+        let stops = activeVoices.values.map(stopCommand(for:))
+        scheduledMIDIExecutor.cancelAllAndStop(stops)
         activeVoices.removeAll(keepingCapacity: true)
         channelOwners.removeAll(keepingCapacity: true)
         activeVoiceCount = 0
@@ -478,6 +770,12 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let token = VoiceToken(rawValue: nextTokenValue)
         nextTokenValue = incrementing(nextTokenValue)
         return token
+    }
+
+    private func makeReleaseGeneration() -> UInt64 {
+        let generation = nextReleaseGeneration
+        nextReleaseGeneration = incrementing(nextReleaseGeneration)
+        return generation
     }
 
     private func incrementing(_ value: UInt64) -> UInt64 {
@@ -549,7 +847,8 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         engine.stop()
 
         engine = AVAudioEngine()
-        sampler = AVAudioUnitSampler()
+        samplers = (0..<Self.samplerPoolSize).map { _ in AVAudioUnitSampler() }
+        samplerMixer = AVAudioMixerNode()
         earlyReflectionDelay = AVAudioUnitDelay()
         reverb = AVAudioUnitReverb()
         graphIsConfigured = false
@@ -601,6 +900,17 @@ final class PolyphonicAudioEngine: NSObject, ObservableObject {
         let normalized = max(-1.0, min(1.0, cents / pitchBendRangeCents))
         let value = Int(centerPitchBend) + Int((normalized * 8_191.0).rounded())
         return UInt16(clamping: value)
+    }
+
+    private static func uptimeDeadline(after seconds: TimeInterval) -> UInt64 {
+        let safeSeconds = seconds.isFinite ? max(0, seconds) : 0
+        let maximumSeconds = Double(UInt64.max) / 1_000_000_000
+        let nanoseconds = safeSeconds >= maximumSeconds
+            ? UInt64.max
+            : UInt64((safeSeconds * 1_000_000_000).rounded(.up))
+        let now = DispatchTime.now().uptimeNanoseconds
+        let (sum, overflowed) = now.addingReportingOverflow(nanoseconds)
+        return overflowed ? UInt64.max : sum
     }
 
     private static func releaseDelay(

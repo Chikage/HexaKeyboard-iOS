@@ -1,5 +1,6 @@
 import HexaKeyboardCore
 import SwiftUI
+import UIKit
 
 struct MainToolbar: View {
     let configuration: HexaKeyboardConfiguration
@@ -10,6 +11,7 @@ struct MainToolbar: View {
     let touchSensitivityPercent: Int
     let midiProgramNumber: Int
     let pseudoPressureEnabled: Bool
+    @Binding var settingsExpanded: Bool
     let onConfigurationChange: (HexaKeyboardConfiguration) -> Void
     let onOpenScore: () -> Void
     let onPlayPause: () -> Void
@@ -21,27 +23,21 @@ struct MainToolbar: View {
     let onMIDIProgramNumberChange: (Int) -> Void
     let onPseudoPressureChange: (Bool) -> Void
 
-    @State private var settingsExpanded = false
     @State private var lastDragTranslation = CGSize.zero
     @State private var lastMagnification: CGFloat = 1
 
-    private let minimumToolbarWidth: CGFloat = 738
+    private let minimumToolbarWidth: CGFloat = 724
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             GeometryReader { geometry in
                 if geometry.size.width < minimumToolbarWidth {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        toolbarRow
-                            .frame(width: minimumToolbarWidth - 12, height: 44)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 6)
-                    }
+                    compactToolbarRow(width: geometry.size.width)
+                        .simultaneousGesture(toolbarMagnificationGesture)
                 } else {
-                    toolbarRow
-                        .frame(width: max(0, geometry.size.width - 12), height: 44)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 6)
+                    regularToolbarRow(width: geometry.size.width)
+                        .simultaneousGesture(toolbarDragGesture)
+                        .simultaneousGesture(toolbarMagnificationGesture)
                 }
             }
             .frame(height: 56)
@@ -51,8 +47,6 @@ struct MainToolbar: View {
                     .stroke(AppPalette.line, lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .simultaneousGesture(toolbarDragGesture)
-            .simultaneousGesture(toolbarMagnificationGesture)
 
             if settingsExpanded {
                 settingsPanel
@@ -65,86 +59,155 @@ struct MainToolbar: View {
         .zIndex(settingsExpanded ? 20 : 1)
     }
 
-    private var toolbarRow: some View {
+    private func regularToolbarRow(width: CGFloat) -> some View {
+        HStack(spacing: 4) {
+            toolbarContent
+            Spacer(minLength: 0)
+            settingsButton
+        }
+        .frame(width: max(0, width - 12), height: 44)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+    }
+
+    private func compactToolbarRow(width: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                toolbarContent
+                    .padding(.leading, 6)
+                    .padding(.trailing, 4)
+            }
+            .scrollDismissesKeyboard(.immediately)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    settingsExpanded = false
+                }
+            )
+
+            compactPanHandle
+                .padding(.leading, 2)
+
+            settingsButton
+                .padding(.horizontal, 6)
+        }
+        .frame(width: max(0, width), height: 56)
+        .contentShape(Rectangle())
+    }
+
+    private var toolbarContent: some View {
         HStack(spacing: 4) {
             transportControls
 
             NumberParameter(
                 title: "列数",
                 value: configuration.columns,
-                range: 4...64
+                range: 4...64,
+                onInteraction: collapseSettings
             ) { onConfigurationChange(configuration.with(columns: $0)) }
 
             NumberParameter(
                 title: "行数",
                 value: configuration.rows,
-                range: 3...32
+                range: 3...32,
+                onInteraction: collapseSettings
             ) { onConfigurationChange(configuration.with(rows: $0)) }
 
             NumberParameter(
                 title: "EDO",
                 value: configuration.period,
-                range: 2...200
+                range: 2...200,
+                onInteraction: collapseSettings
             ) { onConfigurationChange(configuration.with(period: $0)) }
 
             NumberParameter(
                 title: "q 轴音程",
                 value: configuration.stepQ,
-                range: -200...200
+                range: -200...200,
+                onInteraction: collapseSettings
             ) { onConfigurationChange(configuration.with(stepQ: $0)) }
 
             NumberParameter(
                 title: "r 轴音程",
                 value: configuration.stepR,
-                range: -200...200
+                range: -200...200,
+                onInteraction: collapseSettings
             ) { onConfigurationChange(configuration.with(stepR: $0)) }
-
-            Spacer(minLength: 0)
-
-            Button {
-                withAnimation(.easeOut(duration: 0.14)) {
-                    settingsExpanded.toggle()
-                }
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(settingsExpanded ? AppPalette.accent : AppPalette.secondaryText)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(settingsExpanded ? "收起设置" : "展开设置")
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(height: 44)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var settingsButton: some View {
+        Button {
+            dismissKeyboard()
+            withAnimation(.easeOut(duration: 0.14)) {
+                settingsExpanded.toggle()
+            }
+        } label: {
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(settingsExpanded ? AppPalette.accent : AppPalette.secondaryText)
+                .frame(width: 36, height: 36)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(settingsExpanded ? "收起设置" : "展开设置")
+    }
+
+    private var compactPanHandle: some View {
+        Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(AppPalette.secondaryText)
+            .frame(width: 36, height: 44)
+            .background(AppPalette.raisedSurface.opacity(0.72))
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .contentShape(Rectangle())
+            .gesture(toolbarDragGesture)
+            .accessibilityElement()
+            .accessibilityLabel("拖动平移键盘")
+            .accessibilityHint("仅在窄屏工具栏中使用")
     }
 
     private var transportControls: some View {
         HStack(spacing: 0) {
             TransportButton(
-                systemImage: "folder.fill",
+                icon: .folder,
                 accessibilityLabel: "打开 MIDI 或 MuseScore 文件",
                 enabled: !isPlaying && !isLoading,
-                action: onOpenScore
+                action: {
+                    collapseSettings()
+                    onOpenScore()
+                }
             )
             ToolbarDivider()
             TransportButton(
-                systemImage: isPlaying ? "pause.fill" : "play.fill",
+                icon: isPlaying ? .pause : .play,
                 accessibilityLabel: isPlaying ? "暂停" : "播放",
                 active: isPlaying,
                 enabled: playbackMode && !isLoading && audioReady,
-                action: onPlayPause
+                action: {
+                    collapseSettings()
+                    onPlayPause()
+                }
             )
             TransportButton(
-                systemImage: "arrow.counterclockwise",
+                icon: .reset,
                 accessibilityLabel: "复位到开头",
                 enabled: playbackMode && !isLoading,
-                action: onPlaybackReset
+                action: {
+                    collapseSettings()
+                    onPlaybackReset()
+                }
             )
             TransportButton(
-                systemImage: "stop.fill",
+                icon: .terminate,
                 accessibilityLabel: "终止并关闭文件",
                 enabled: playbackMode && !isLoading,
-                action: onPlaybackTerminate
+                action: {
+                    collapseSettings()
+                    onPlaybackTerminate()
+                }
             )
             ToolbarDivider()
         }
@@ -177,8 +240,7 @@ struct MainToolbar: View {
                 ))
                 .labelsHidden()
                 .tint(AppPalette.accent)
-                .scaleEffect(0.78)
-                .frame(width: 48)
+                .frame(width: 52, alignment: .trailing)
             }
             .padding(.horizontal, 2)
             .frame(height: 58)
@@ -198,6 +260,10 @@ struct MainToolbar: View {
     private var toolbarDragGesture: some Gesture {
         DragGesture(minimumDistance: 10, coordinateSpace: .local)
             .onChanged { value in
+                if lastDragTranslation == .zero, value.translation != .zero {
+                    dismissKeyboard()
+                    collapseSettings()
+                }
                 let delta = CGSize(
                     width: value.translation.width - lastDragTranslation.width,
                     height: -(value.translation.height - lastDragTranslation.height)
@@ -215,6 +281,10 @@ struct MainToolbar: View {
         MagnificationGesture()
             .onChanged { value in
                 guard value.isFinite, value > 0, lastMagnification > 0 else { return }
+                if lastMagnification == 1, value != 1 {
+                    dismissKeyboard()
+                    collapseSettings()
+                }
                 let delta = value / lastMagnification
                 lastMagnification = value
                 if delta.isFinite, delta > 0 {
@@ -225,32 +295,115 @@ struct MainToolbar: View {
                 lastMagnification = 1
             }
     }
+
+    private func collapseSettings() {
+        guard settingsExpanded else { return }
+        withAnimation(.easeOut(duration: 0.14)) {
+            settingsExpanded = false
+        }
+    }
 }
 
 private struct TransportButton: View {
-    let systemImage: String
+    let icon: TransportIcon
     let accessibilityLabel: String
     var active = false
     var enabled = true
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(enabled ? Color.white : AppPalette.playbackMuted)
+        Button {
+            guard enabled else { return }
+            dismissKeyboard()
+            action()
+        } label: {
+            AndroidTransportIconShape(icon: icon)
+                .fill(enabled ? Color.white : AppPalette.playbackMuted)
+                .frame(width: 22, height: 22)
                 .frame(width: 48, height: 44)
                 .background(
-                    active
-                        ? AppPalette.playbackActive
-                        : enabled ? AppPalette.playbackButton : AppPalette.playbackPanel
+                    enabled
+                        ? (active ? AppPalette.playbackActive : AppPalette.playbackButton)
+                        : AppPalette.playbackPanel
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
-        .disabled(!enabled)
+        .allowsHitTesting(enabled)
         .padding(.trailing, 6)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(enabled ? "" : "不可用")
+    }
+}
+
+private enum TransportIcon {
+    case folder
+    case play
+    case pause
+    case reset
+    case terminate
+}
+
+private struct AndroidTransportIconShape: Shape {
+    let icon: TransportIcon
+
+    func path(in rect: CGRect) -> Path {
+        let scale = min(rect.width, rect.height) / 24
+        let offsetX = rect.midX - 12 * scale
+        let offsetY = rect.midY - 12 * scale
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: offsetX + x * scale, y: offsetY + y * scale)
+        }
+        func scaledRect(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat) -> CGRect {
+            CGRect(
+                x: offsetX + x * scale,
+                y: offsetY + y * scale,
+                width: width * scale,
+                height: height * scale
+            )
+        }
+
+        var path = Path()
+        switch icon {
+        case .folder:
+            path.move(to: point(10, 4))
+            path.addLine(to: point(4, 4))
+            path.addCurve(to: point(2, 6), control1: point(2.9, 4), control2: point(2, 4.9))
+            path.addLine(to: point(2, 18))
+            path.addCurve(to: point(4, 20), control1: point(2, 19.1), control2: point(2.9, 20))
+            path.addLine(to: point(20, 20))
+            path.addCurve(to: point(22, 18), control1: point(21.1, 20), control2: point(22, 19.1))
+            path.addLine(to: point(22, 8))
+            path.addCurve(to: point(20, 6), control1: point(22, 6.9), control2: point(21.1, 6))
+            path.addLine(to: point(12, 6))
+            path.closeSubpath()
+        case .play:
+            path.move(to: point(8, 5))
+            path.addLine(to: point(8, 19))
+            path.addLine(to: point(19, 12))
+            path.closeSubpath()
+        case .pause:
+            path.addRect(scaledRect(7, 5, 3, 14))
+            path.addRect(scaledRect(14, 5, 3, 14))
+        case .reset:
+            path.move(to: point(12, 5))
+            path.addLine(to: point(12, 2))
+            path.addLine(to: point(7, 7))
+            path.addLine(to: point(12, 12))
+            path.addLine(to: point(12, 9))
+            path.addCurve(to: point(17, 14), control1: point(14.76, 9), control2: point(17, 11.24))
+            path.addCurve(to: point(12, 19), control1: point(17, 16.76), control2: point(14.76, 19))
+            path.addCurve(to: point(7, 14), control1: point(9.24, 19), control2: point(7, 16.76))
+            path.addLine(to: point(5, 14))
+            path.addCurve(to: point(12, 21), control1: point(5, 17.87), control2: point(8.13, 21))
+            path.addCurve(to: point(19, 14), control1: point(15.87, 21), control2: point(19, 17.87))
+            path.addCurve(to: point(12, 7), control1: point(19, 10.13), control2: point(15.87, 7))
+            path.addLine(to: point(12, 5))
+            path.closeSubpath()
+        case .terminate:
+            path.addRect(scaledRect(7, 7, 10, 10))
+        }
+        return path
     }
 }
 
@@ -268,6 +421,7 @@ private struct NumberParameter: View {
     let title: String
     let value: Int
     let range: ClosedRange<Int>
+    let onInteraction: () -> Void
     let onValueChange: (Int) -> Void
 
     @State private var text: String
@@ -277,11 +431,13 @@ private struct NumberParameter: View {
         title: String,
         value: Int,
         range: ClosedRange<Int>,
+        onInteraction: @escaping () -> Void = {},
         onValueChange: @escaping (Int) -> Void
     ) {
         self.title = title
         self.value = value
         self.range = range
+        self.onInteraction = onInteraction
         self.onValueChange = onValueChange
         _text = State(initialValue: String(value))
     }
@@ -301,6 +457,9 @@ private struct NumberParameter: View {
                     .tint(AppPalette.accent)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .simultaneousGesture(
+                        TapGesture().onEnded(onInteraction)
+                    )
                     .onSubmit(commitInput)
                     .onChange(of: text) { candidate in
                         guard candidate.count <= 4,
@@ -347,6 +506,8 @@ private struct NumberParameter: View {
 
     private func stepButton(_ label: String, nextValue: Int, enabled: Bool) -> some View {
         Button {
+            dismissKeyboard()
+            onInteraction()
             onValueChange(nextValue)
         } label: {
             Text(label)
@@ -457,4 +618,14 @@ private extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self {
         min(max(self, range.lowerBound), range.upperBound)
     }
+}
+
+@MainActor
+private func dismissKeyboard() {
+    UIApplication.shared.sendAction(
+        #selector(UIResponder.resignFirstResponder),
+        to: nil,
+        from: nil,
+        for: nil
+    )
 }

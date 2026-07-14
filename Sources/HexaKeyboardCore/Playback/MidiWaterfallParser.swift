@@ -343,6 +343,9 @@ public enum MidiWaterfallParser {
         guard division & 0x8000 == 0 else {
             throw MidiWaterfallParserError("SMPTE time division is not supported")
         }
+        guard division > 0 else {
+            throw MidiWaterfallParserError("MIDI ticks-per-quarter division must be greater than zero")
+        }
         guard midiFormat == 0 || midiFormat == 1 else {
             throw MidiWaterfallParserError("Unsupported MIDI format \(midiFormat)")
         }

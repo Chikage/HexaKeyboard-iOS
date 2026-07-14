@@ -36,7 +36,6 @@ final class KeyboardViewModel: ObservableObject {
     @Published private(set) var midiProgramNumber = 0
     @Published private(set) var pseudoPressureEnabled = true
     @Published private(set) var audioReady = false
-    @Published var errorMessage: String?
     @Published private(set) var toastMessage: String?
 
     let audioEngine: PolyphonicAudioEngine
@@ -216,15 +215,11 @@ final class KeyboardViewModel: ObservableObject {
                             maximumBytes: ScoreContentParser.maximumFileBytes
                         )
                     }
-                    let data = try Data(
-                        contentsOf: url,
-                        options: [.mappedIfSafe, .uncached]
+                    let data = try Self.readScoreData(
+                        from: url,
+                        maximumBytes: ScoreContentParser.maximumFileBytes,
+                        expectedSize: resourceValues?.fileSize
                     )
-                    guard data.count <= ScoreContentParser.maximumFileBytes else {
-                        throw ScoreContentParserError.fileTooLarge(
-                            maximumBytes: ScoreContentParser.maximumFileBytes
-                        )
-                    }
                     let fileName = url.lastPathComponent.isEmpty ? "selected-file" : url.lastPathComponent
                     return (
                         fileName,
@@ -237,9 +232,16 @@ final class KeyboardViewModel: ObservableObject {
                 showToast("已加载 \(fileName)")
             } catch {
                 playbackController.loadingFailed()
-                errorMessage = "文件打开失败：\(error.localizedDescription)"
+                reportFileOpenFailure(error)
             }
         }
+    }
+
+    func reportFileOpenFailure(_ error: Error) {
+        showToast(
+            "文件打开失败：\(error.localizedDescription)",
+            durationNanoseconds: 3_500_000_000
+        )
     }
 
     func loadScore(data: Data, fileName: String) async throws {
@@ -290,17 +292,45 @@ final class KeyboardViewModel: ObservableObject {
         playbackTimeline = playbackState.score?.snapToKeyboard(layout)
     }
 
-    private func showToast(_ message: String) {
+    private func showToast(
+        _ message: String,
+        durationNanoseconds: UInt64 = 2_000_000_000
+    ) {
         toastTask?.cancel()
         toastMessage = message
         toastTask = Task { @MainActor [weak self] in
             do {
-                try await Task<Never, Never>.sleep(nanoseconds: 2_000_000_000)
+                try await Task<Never, Never>.sleep(nanoseconds: durationNanoseconds)
             } catch {
                 return
             }
             self?.toastMessage = nil
         }
+    }
+
+    nonisolated private static func readScoreData(
+        from url: URL,
+        maximumBytes: Int,
+        expectedSize: Int?
+    ) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        var data = Data()
+        if let expectedSize, expectedSize > 0, expectedSize <= maximumBytes {
+            data.reserveCapacity(expectedSize)
+        }
+
+        let chunkSize = 64 * 1_024
+        while true {
+            let chunk = try handle.read(upToCount: chunkSize) ?? Data()
+            if chunk.isEmpty { break }
+            guard data.count <= maximumBytes - chunk.count else {
+                throw ScoreContentParserError.fileTooLarge(maximumBytes: maximumBytes)
+            }
+            data.append(chunk)
+        }
+        return data
     }
 }
 

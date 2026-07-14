@@ -403,6 +403,7 @@ final class HexKeyboardCanvasView: UIControl {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        window?.endEditing(true)
         for touch in touches {
             processCoalescedSamples(for: touch, event: event, includeCurrent: true)
         }

@@ -25,6 +25,20 @@ final class MidiWaterfallParserTests: XCTestCase {
         )
     }
 
+    func testRejectsZeroTicksPerQuarterDivision() {
+        var midi = smfTrack([
+            0x00, 0xFF, 0x2F, 0x00,
+        ])
+        midi[12] = 0
+        midi[13] = 0
+
+        XCTAssertThrowsError(
+            try MidiWaterfallParser.detectAndParse(bytes: midi, fileName: "zero-division.mid")
+        ) { error in
+            XCTAssertTrue(error.localizedDescription.contains("greater than zero"))
+        }
+    }
+
     func testParsesMIDXInlinePitchOffset() throws {
         let parsed = try MidiWaterfallParser.detectAndParse(
             bytes: smfTrack([

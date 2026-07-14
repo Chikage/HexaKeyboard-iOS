@@ -1,11 +1,13 @@
 import HexaKeyboardCore
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var model = KeyboardViewModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingScoreImporter = false
+    @State private var settingsExpanded = false
 
     var body: some View {
         ZStack {
@@ -21,6 +23,7 @@ struct ContentView: View {
                     touchSensitivityPercent: model.touchSensitivityPercent,
                     midiProgramNumber: model.midiProgramNumber,
                     pseudoPressureEnabled: model.pseudoPressureEnabled,
+                    settingsExpanded: $settingsExpanded,
                     onConfigurationChange: model.applyConfiguration,
                     onOpenScore: { showingScoreImporter = true },
                     onPlayPause: model.togglePlayPause,
@@ -34,35 +37,46 @@ struct ContentView: View {
                 )
                 .zIndex(20)
 
-                HexKeyboardSurface(
-                    layout: model.layout,
-                    scale: model.keyboardScale,
-                    pan: model.keyboardPan,
-                    touchSensitivity: Double(model.touchSensitivityPercent) / 100,
-                    pseudoPressureEnabled: model.pseudoPressureEnabled,
-                    selectedCoordinates: model.playbackState.playbackMode
-                        ? []
-                        : model.selectedCoordinates,
-                    selectionAnchorCoordinate: model.playbackState.playbackMode
-                        ? nil
-                        : model.selectionAnchorCoordinate,
-                    playbackTimeline: model.playbackTimeline,
-                    playbackPositionSeconds: model.playbackState.playheadSeconds,
-                    activePlaybackNoteIndices: model.playbackState.activeScoreIndices,
-                    onConstrainedPan: model.updateConstrainedPan,
-                    onKeyDown: model.keyDown,
-                    onKeyPressure: model.keyPressure,
-                    onKeyUp: model.keyUp
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(AppPalette.background)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(AppPalette.line, lineWidth: 1)
-                        .allowsHitTesting(false)
+                ZStack {
+                    HexKeyboardSurface(
+                        layout: model.layout,
+                        scale: model.keyboardScale,
+                        pan: model.keyboardPan,
+                        touchSensitivity: Double(model.touchSensitivityPercent) / 100,
+                        pseudoPressureEnabled: model.pseudoPressureEnabled,
+                        selectedCoordinates: model.playbackState.playbackMode
+                            ? []
+                            : model.selectedCoordinates,
+                        selectionAnchorCoordinate: model.playbackState.playbackMode
+                            ? nil
+                            : model.selectionAnchorCoordinate,
+                        playbackTimeline: model.playbackTimeline,
+                        playbackPositionSeconds: model.playbackState.playheadSeconds,
+                        activePlaybackNoteIndices: model.playbackState.activeScoreIndices,
+                        onConstrainedPan: model.updateConstrainedPan,
+                        onKeyDown: model.keyDown,
+                        onKeyPressure: model.keyPressure,
+                        onKeyUp: model.keyUp
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppPalette.background)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(AppPalette.line, lineWidth: 1)
+                            .allowsHitTesting(false)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityLabel("六边形微分音键盘")
+
+                    if settingsExpanded {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture(perform: dismissSettings)
+                            .accessibilityLabel("关闭设置")
+                            .accessibilityAddTraits(.isButton)
+                    }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .accessibilityLabel("六边形微分音键盘")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .padding(8)
 
@@ -70,8 +84,11 @@ struct ContentView: View {
                 Text(toast)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(AppPalette.primaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
+                    .frame(maxWidth: 620)
                     .background(AppPalette.raisedSurface.opacity(0.96))
                     .overlay {
                         Capsule().stroke(AppPalette.line, lineWidth: 1)
@@ -109,22 +126,21 @@ struct ContentView: View {
                     model.loadScore(from: url)
                 }
             case let .failure(error):
-                model.errorMessage = "文件打开失败：\(error.localizedDescription)"
+                model.reportFileOpenFailure(error)
             }
         }
-        .alert(
-            "Hexa Key",
-            isPresented: Binding(
-                get: { model.errorMessage != nil },
-                set: { if !$0 { model.errorMessage = nil } }
-            ),
-            actions: {
-                Button("好") { model.errorMessage = nil }
-            },
-            message: {
-                Text(model.errorMessage ?? "未知错误")
-            }
+    }
+
+    private func dismissSettings() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
         )
+        withAnimation(.easeOut(duration: 0.14)) {
+            settingsExpanded = false
+        }
     }
 
     private static let scoreContentTypes: [UTType] = {

@@ -51,7 +51,7 @@ MuseScore 转换器完全在内存中读取 MSCX/MSCZ，并支持多声部、Tup
 
 ## 音频
 
-音频后端使用 `AVAudioEngine` 与 `AVAudioUnitSampler`。每个同时发声的音符占用独立旋律 MIDI 通道，并在 Note On 前设置 Program、Bank、Expression 与 14 位 pitch bend，确保微分音和弦中的各音独立调律。应用会处理音频中断、路由变化和媒体服务重置。
+音频后端使用 `AVAudioEngine` 与 4 个 `AVAudioUnitSampler`，提供 60 个可独立弯音的旋律声部。每个同时发声的音符占用独立采样器/通道地址，并在 Note On 前设置 Program、Bank、Expression 与 14 位 pitch bend，确保微分音和弦中的各音独立调律。未来 Note On/Note Off 由高优先级串行调度器按单调时钟执行；暂停、复位和声部复用会同步撤销待发事件，已经越过结束时间的音符不会补发。应用还会处理音频中断、路由变化和媒体服务重置。
 
 默认 SoundFont 位于 `App/Resources/Audio/DefaultSoundFont.sf2`，来源与权利信息见 [`SOUNDFONT_NOTICE.md`](SOUNDFONT_NOTICE.md)。
 

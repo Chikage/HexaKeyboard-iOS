@@ -108,6 +108,37 @@ final class MuseScoreConverterTests: XCTestCase {
         }
     }
 
+    func testRejectsOversizedMSCZEntryBeforeAllocation() throws {
+        var archive = makeZIP([("score.mscx", Data(minimalMSCX.utf8))])
+        let signature = Data([0x50, 0x4B, 0x01, 0x02])
+        let central = try XCTUnwrap(archive.range(of: signature)?.lowerBound)
+        let declaredSize = UInt32(64 * 1_024 * 1_024 + 1)
+        for offset in 0..<4 {
+            archive[central + 24 + offset] = UInt8((declaredSize >> UInt32(offset * 8)) & 0xFF)
+        }
+
+        XCTAssertThrowsError(
+            try MuseScoreConverter.convert(archive, fileName: "oversized.mscz")
+        ) { error in
+            XCTAssertTrue(error.localizedDescription.contains("64 MB"))
+        }
+    }
+
+    func testRejectsOutOfRangeLocationMeasuresWithoutOverflowing() {
+        let xml = score(voice: """
+        <Spanner type="LetRing"><LetRing/><next><location>
+          <measures>9223372036854775807</measures>
+        </location></next></Spanner>
+        \(chord(60))
+        """)
+
+        XCTAssertThrowsError(
+            try MuseScoreConverter.convert(Data(xml.utf8), fileName: "overflow.mscx")
+        ) { error in
+            XCTAssertTrue(error.localizedDescription.contains("outside the supported range"))
+        }
+    }
+
     func testRendersMuseScoreGraceNotesBeforeMainChord() throws {
         let parsed = try parse(score(voice: """
         <Chord><durationType>eighth</durationType><acciaccatura/><Note><pitch>62</pitch></Note></Chord>
