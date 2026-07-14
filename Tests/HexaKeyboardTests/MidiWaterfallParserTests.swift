@@ -186,7 +186,7 @@ final class MidiWaterfallParserTests: XCTestCase {
         )
     }
 
-    func testAppliesRPNPitchBendRangeAndAddsMIDXInlineCents() throws {
+    func testMIDXInlineCentsOverrideTheChannelPitchBend() throws {
         let parsed = try MidiWaterfallParser.detectAndParse(
             bytes: smfTrack([
                 0x00, 0xB2, 0x65, 0x00,
@@ -204,9 +204,9 @@ final class MidiWaterfallParserTests: XCTestCase {
 
         let noteOn = try XCTUnwrap(parsed.rawEvents.first(where: { $0.velocity > 0 }))
         let note = try XCTUnwrap(parsed.notes.first)
-        XCTAssertEqual(noteOn.cents, 366, accuracy: 0.000_001)
-        XCTAssertEqual(note.audioPitch, 64.66, accuracy: 0.000_001)
-        XCTAssertEqual(note.cents, -34, accuracy: 0.000_001)
+        XCTAssertEqual(noteOn.cents, 16, accuracy: 0.000_001)
+        XCTAssertEqual(note.audioPitch, 61.16, accuracy: 0.000_001)
+        XCTAssertEqual(note.cents, 16, accuracy: 0.000_001)
     }
 
     func testSustainDefersNoteOffUntilPedalRelease() throws {

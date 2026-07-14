@@ -89,6 +89,11 @@ final class ScorePlaybackController {
         stopClock()
         visualTailActive = false
         guard let score = state.score, !state.loading, !score.notes.isEmpty else { return }
+        do {
+            try audioEngine.prepareInstruments(for: score.notes)
+        } catch {
+            return
+        }
 
         let position = state.playheadSeconds >= score.duration - Self.playbackEpsilonSeconds
             ? 0
@@ -223,7 +228,8 @@ final class ScorePlaybackController {
                 bankMSB: note.bankMsb,
                 bankLSB: note.bankLsb,
                 delaySeconds: delaySeconds,
-                automaticStopAfterSeconds: max(0, note.end - positionSeconds)
+                automaticStopAfterSeconds: max(0, note.end - positionSeconds),
+                allowsChannelSharing: true
             ) {
                 activeVoices[audioCursor] = token
             }

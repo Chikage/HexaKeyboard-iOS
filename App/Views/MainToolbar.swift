@@ -13,6 +13,7 @@ struct MainToolbar: View {
     let pseudoPressureEnabled: Bool
     @Binding var settingsExpanded: Bool
     let onConfigurationChange: (HexaKeyboardConfiguration) -> Void
+    let onBack: () -> Void
     let onOpenScore: () -> Void
     let onPlayPause: () -> Void
     let onPlaybackReset: () -> Void
@@ -26,7 +27,9 @@ struct MainToolbar: View {
     @State private var lastDragTranslation = CGSize.zero
     @State private var lastMagnification: CGFloat = 1
 
-    private let minimumToolbarWidth: CGFloat = 724
+    private var minimumToolbarWidth: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 780 : 724
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -171,6 +174,16 @@ struct MainToolbar: View {
 
     private var transportControls: some View {
         HStack(spacing: 0) {
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                TransportButton(
+                    icon: .back,
+                    accessibilityLabel: "返回",
+                    action: {
+                        collapseSettings()
+                        onBack()
+                    }
+                )
+            }
             TransportButton(
                 icon: .folder,
                 accessibilityLabel: "打开 MIDI 或 MuseScore 文件",
@@ -317,8 +330,7 @@ private struct TransportButton: View {
             dismissKeyboard()
             action()
         } label: {
-            AndroidTransportIconShape(icon: icon)
-                .fill(enabled ? Color.white : AppPalette.playbackMuted)
+            transportIcon
                 .frame(width: 22, height: 22)
                 .frame(width: 48, height: 44)
                 .background(
@@ -334,9 +346,22 @@ private struct TransportButton: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(enabled ? "" : "不可用")
     }
+
+    @ViewBuilder
+    private var transportIcon: some View {
+        if icon == .back {
+            Image(systemName: "chevron.backward")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(enabled ? Color.white : AppPalette.playbackMuted)
+        } else {
+            AndroidTransportIconShape(icon: icon)
+                .fill(enabled ? Color.white : AppPalette.playbackMuted)
+        }
+    }
 }
 
-private enum TransportIcon {
+private enum TransportIcon: Equatable {
+    case back
     case folder
     case play
     case pause
@@ -365,6 +390,8 @@ private struct AndroidTransportIconShape: Shape {
 
         var path = Path()
         switch icon {
+        case .back:
+            break
         case .folder:
             path.move(to: point(10, 4))
             path.addLine(to: point(4, 4))

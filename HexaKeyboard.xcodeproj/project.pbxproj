@@ -96,13 +96,13 @@
 		567B3488D889A082C9C2FDDC /* TouchSelectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchSelectionState.swift; sourceTree = "<group>"; };
 		6EE70684669A3BA2828599B7 /* HexTouchDynamics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexTouchDynamics.swift; sourceTree = "<group>"; };
 		70D1778651F7A32FF8B1A841 /* ScoreContentParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreContentParserTests.swift; sourceTree = "<group>"; };
-		7D74D841BDBFD07117A45766 /* HexaKeyboard.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HexaKeyboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7D74D841BDBFD07117A45766 /* HexaKeyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HexaKeyboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		80533BA65C8AC264929CEA31 /* HexaKeyboardTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HexaKeyboardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		86C95D90830B2AC585AB2BF0 /* PitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchTests.swift; sourceTree = "<group>"; };
 		8F62E215442877B5270E400A /* Pitch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pitch.swift; sourceTree = "<group>"; };
 		A1B734D2F4615034CDDA9B97 /* ScoreContentParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreContentParser.swift; sourceTree = "<group>"; };
 		A3651F032F3AA7CA664C06C3 /* HexaKeyboardCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = HexaKeyboardCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		ACC21D4B13F7CA857B69A4C5 /* DefaultSoundFont.sf2 */ = {isa = PBXFileReference; path = DefaultSoundFont.sf2; sourceTree = "<group>"; };
+		ACC21D4B13F7CA857B69A4C5 /* DefaultSoundFont.sf2 */ = {isa = PBXFileReference; lastKnownFileType = file; path = DefaultSoundFont.sf2; sourceTree = "<group>"; };
 		B1F6B82543DD58D9B9C33632 /* HexaKeyboardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexaKeyboardApp.swift; sourceTree = "<group>"; };
 		CC8E87CD5F7CA22DA8D69C1B /* HexaKeyboardLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexaKeyboardLayoutTests.swift; sourceTree = "<group>"; };
 		D0435EEBADD4A1007F991427 /* HexGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexGeometry.swift; sourceTree = "<group>"; };
@@ -156,7 +156,6 @@
 			children = (
 				69BB1D29DFCF7591BBBA859C /* Audio */,
 			);
-			name = Resources;
 			path = Resources;
 			sourceTree = "<group>";
 		};
@@ -483,6 +482,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B963P7JMRA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
@@ -670,6 +670,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B963P7JMRA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;

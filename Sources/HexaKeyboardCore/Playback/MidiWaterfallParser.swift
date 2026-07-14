@@ -515,6 +515,7 @@ public enum MidiWaterfallParser {
                     var effectivePitch = data1
                     var noteCents = 0.0
                     if velocity > 0 {
+                        var hasInlineOffset = false
                         if let last = inlineOffsets.last, last.tick != tick {
                             inlineOffsets.removeAll(keepingCapacity: true)
                         }
@@ -525,12 +526,15 @@ public enum MidiWaterfallParser {
                         ) {
                             effectivePitch = inline.pitch
                             noteCents = inline.cents
+                            hasInlineOffset = true
                         }
-                        noteCents += pitchBendCents(
-                            value: pitchBendValues[channel],
-                            rangeSemitones: Double(pitchBendRangeSemitones[channel])
-                                + Double(pitchBendRangeCents[channel]) / 100.0
-                        )
+                        if !hasInlineOffset {
+                            noteCents += pitchBendCents(
+                                value: pitchBendValues[channel],
+                                rangeSemitones: Double(pitchBendRangeSemitones[channel])
+                                    + Double(pitchBendRangeCents[channel]) / 100.0
+                            )
+                        }
                     } else {
                         inlineOffsets.removeAll(keepingCapacity: true)
                     }

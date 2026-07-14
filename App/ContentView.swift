@@ -8,6 +8,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingScoreImporter = false
     @State private var settingsExpanded = false
+    @State private var requestedAutonomousSingleAppMode = false
 
     var body: some View {
         ZStack {
@@ -25,6 +26,7 @@ struct ContentView: View {
                     pseudoPressureEnabled: model.pseudoPressureEnabled,
                     settingsExpanded: $settingsExpanded,
                     onConfigurationChange: model.applyConfiguration,
+                    onBack: leaveApplication,
                     onOpenScore: { showingScoreImporter = true },
                     onPlayPause: model.togglePlayPause,
                     onPlaybackReset: model.resetPlayback,
@@ -104,7 +106,11 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
-        .onAppear(perform: model.activateAudio)
+        .defersSystemGestures(on: Self.isIPad ? .all : [])
+        .onAppear {
+            model.activateAudio()
+            requestAutonomousSingleAppModeIfAvailable()
+        }
         .onChange(of: scenePhase) { phase in
             switch phase {
             case .active:
@@ -141,6 +147,45 @@ struct ContentView: View {
         withAnimation(.easeOut(duration: 0.14)) {
             settingsExpanded = false
         }
+    }
+
+    private func requestAutonomousSingleAppModeIfAvailable() {
+        guard Self.isIPad, !requestedAutonomousSingleAppMode else { return }
+        requestedAutonomousSingleAppMode = true
+        guard !UIAccessibility.isGuidedAccessEnabled else { return }
+
+        UIAccessibility.requestGuidedAccessSession(enabled: true) { _ in }
+    }
+
+    private func leaveApplication() {
+        dismissSettings()
+        if UIAccessibility.isGuidedAccessEnabled {
+            UIAccessibility.requestGuidedAccessSession(enabled: false) { _ in
+                Task { @MainActor in
+                    Self.closeForegroundScene()
+                }
+            }
+        } else {
+            Self.closeForegroundScene()
+        }
+    }
+
+    @MainActor
+    private static func closeForegroundScene() {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+        else { return }
+
+        UIApplication.shared.requestSceneSessionDestruction(
+            scene.session,
+            options: nil,
+            errorHandler: nil
+        )
+    }
+
+    private static var isIPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
     }
 
     private static let scoreContentTypes: [UTType] = {
